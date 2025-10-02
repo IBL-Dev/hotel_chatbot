@@ -29,7 +29,7 @@ def chat():
         )
 
     return jsonify({
-        "user": user_input,
-        "intent": intent,
-        "bot": bot_reply
-    })
+    "user": user_input,
+    "intent": intent,
+    "bot": bot_reply
+})
