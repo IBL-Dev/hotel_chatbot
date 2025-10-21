@@ -1,15 +1,23 @@
-import os
 from pymongo import MongoClient
-from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+mongo = None
 
-# Get Mongo URI from .env
-MONGO_URI = os.getenv("MONGO_URI")
+def init_db(app):
+    """Initialize the MongoDB client using the provided Flask app.
 
-# Connect to MongoDB
-client = MongoClient(MONGO_URI)
-db = client.get_database()  # automatically uses the database in URI
-
-print(f"✅ Connected to MongoDB database: {db.name}")
+    Uses app.logger to avoid requiring an application context when called
+    during app setup.
+    """
+    global mongo
+    try:
+        mongo = MongoClient(app.config.get("MONGO_URI"))
+        app.logger.info("✅ MongoDB Connected Successfully!")
+    except Exception as e:
+        # Log via app.logger so this function can be called during app setup
+        try:
+            app.logger.exception("Failed to connect to MongoDB: %s", e)
+        except Exception:
+            # Last-resort print if logger is not available
+            print("Failed to connect to MongoDB:", e)
+        mongo = None
+    return mongo
