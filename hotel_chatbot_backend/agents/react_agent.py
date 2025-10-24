@@ -1,55 +1,46 @@
-import os
-from dotenv import load_dotenv
-from llama_index.core.agent import ReActAgent
-from llama_index.llms.gemini import Gemini
+from services.gemini_service import generate_response
 
-# Load environment variables
-load_dotenv()
-
-def get_llm():
-    """Return a Gemini LLM instance using GEMINI_API_KEY from .env."""
-    gemini_key = os.getenv("GEMINI_API_KEY")
-    if not gemini_key:
-        raise ValueError("GEMINI_API_KEY not found in .env file")
-
-    # ✅ Pass the API key explicitly (fixes silent auth failure)
-    return Gemini(model="gemini-1.5-flash", api_key=gemini_key)
 
 def classify_intent(user_message: str) -> str:
     """
-    Classify the user's message as either 'booking' or 'service'
-    using Gemini via LlamaIndex's ReAct agent.
+    Classify the user's message as either 'booking' or 'service'.
+
+    Strategy:
+    1. Try calling the Gemini wrapper `generate_response`.
+    2. If the model returns an explicit intent (booking/service), use it.
+    3. Otherwise, fall back to simple keyword checks on the user message.
+    This ensures the app still works if the LLM is unavailable or returns an
+    unexpected answer.
     """
     if not user_message or not isinstance(user_message, str):
         return "service"
 
     try:
-        llm = get_llm()
-
-        agent = ReActAgent.from_llm(
-            llm=llm,
-            context="You are a hotel assistant AI that classifies messages as either about bookings or hotel services."
+        # Ask the model for an intent-like reply
+        resp = generate_response(
+            f"Decide intent (booking or service) for this message: {user_message}"
         )
+        intent_raw = (resp or "").strip().lower()
 
-        prompt = f"""
-        Determine the intent of this message.
-        Respond with only one word:
-        - "booking" if the message is about reservations, rooms, check-in/out, or prices.
-        - "service" if it is about food, spa, cleaning, transport, or any other hotel service.
+        # Model produced a clean intent word
+        if intent_raw in ("booking", "service"):
+            return intent_raw
 
-        Message: {user_message}
-        """
-
-        response = agent.query(prompt)
-        intent = response.response.strip().lower()
-
-        if "book" in intent or "reservation" in user_message.lower():
+        # If model returned a longer text, look for keywords
+        if "book" in intent_raw:
             return "booking"
-        if "service" in intent:
+        if "service" in intent_raw:
             return "service"
 
-        return "unknown"
-
     except Exception as e:
-        print(f"[Gemini Error] {e}")
-        return "unknown"
+        # Model call failed — we'll fallback to keywords below
+        print(f"[generate_response error] {e}")
+
+    # --- Keyword fallback on the original user message ---
+    ui = user_message.lower()
+    if any(word in ui for word in ["book", "reservation", "check-in", "check out", "room"]):
+        return "booking"
+    if any(word in ui for word in ["spa", "restaurant", "menu", "taxi", "transport", "service"]):
+        return "service"
+
+    return "unknown"
