@@ -22,8 +22,13 @@ If you already have the project folder, open it in **VS Code**.
 Otherwise, clone it from GitHub:
 
 ```bash
+
+Python 3.12.10
+
 # 🧬 Clone the repository
 git clone https://github.com/yourusername/hotel_chatbot_backend.git
+
+
 
 install dependacy :- pip install -r requirements.txt
 
