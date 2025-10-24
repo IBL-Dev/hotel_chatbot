@@ -4,11 +4,12 @@ from llama_index.llms.gemini import Gemini
 from const.intent_config import INTENTS, DEFAULT_INTENT
 from services.gemini_service import generate_response
 
-# Load .env
+# Load environment variables from .env
 load_dotenv()
 
+
 def get_llm():
-    """Return Gemini instance with API key."""
+    """Return a Gemini LLM instance using the API key from .env."""
     gemini_key = os.getenv("GEMINI_API_KEY")
     if not gemini_key:
         raise ValueError("GEMINI_API_KEY not found in .env file")
@@ -59,6 +60,7 @@ def classify_intent(user_message: str) -> str:
 
         Message: {user_message}
         """
+
         llm = get_llm()
         response = llm.complete(prompt)
         intent_raw = (response.text or "").strip().lower()
