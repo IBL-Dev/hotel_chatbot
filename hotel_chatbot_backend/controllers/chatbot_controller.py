@@ -19,15 +19,26 @@ def process_user_message(user_message: str):
         else:
             reply = handle_service(user_message)
 
-        # Step 3: Return structured result
+        # friendly icon map: emoji + optional FontAwesome classname
+        icon_map = {
+            "booking": {"emoji": "📅", "fa": "fa-calendar-check"},
+            "service": {"emoji": "🛎️", "fa": "fa-concierge-bell"},
+            "unknown": {"emoji": "❓", "fa": "fa-question-circle"},
+            "error": {"emoji": "⚠️", "fa": "fa-exclamation-triangle"}
+        }
+
+        chosen = icon_map.get(intent, icon_map["unknown"])
+
+        # Step 3: Return structured result — include the emoji directly in the reply text
         return {
             "intent": intent,
-            "reply": reply
+            "reply": f"{chosen['emoji']} {reply}"
         }
 
     except Exception as e:
         # Safety catch — prevents API crashes if Gemini or DB fails
+        err_reply = f"Sorry, I couldn’t process your request right now. (Error: {str(e)})"
         return {
             "intent": "unknown",
-            "reply": f"Sorry, I couldn’t process your request right now. (Error: {str(e)})"
+            "reply": f"⚠️ {err_reply}"
         }

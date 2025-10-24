@@ -15,32 +15,35 @@ def classify_intent(user_message: str) -> str:
     if not user_message or not isinstance(user_message, str):
         return "service"
 
-    try:
-        # Ask the model for an intent-like reply
-        resp = generate_response(
-            f"Decide intent (booking or service) for this message: {user_message}"
-        )
-        intent_raw = (resp or "").strip().lower()
-
-        # Model produced a clean intent word
-        if intent_raw in ("booking", "service"):
-            return intent_raw
-
-        # If model returned a longer text, look for keywords
-        if "book" in intent_raw:
-            return "booking"
-        if "service" in intent_raw:
-            return "service"
-
-    except Exception as e:
-        # Model call failed — we'll fallback to keywords below
-        print(f"[generate_response error] {e}")
-
-    # --- Keyword fallback on the original user message ---
+    # --- Keyword-first deterministic detection (fast and reliable) ---
     ui = user_message.lower()
-    if any(word in ui for word in ["book", "reservation", "check-in", "check out", "room"]):
-        return "booking"
-    if any(word in ui for word in ["spa", "restaurant", "menu", "taxi", "transport", "service"]):
+
+    # Explicit phrase: 'room service' is a service, not a booking
+    if "room service" in ui or "room-service" in ui:
         return "service"
 
+    # Service-related keywords
+    service_keywords = ["spa", "restaurant", "menu", "taxi", "transport", "service", "housekeeping", "clean"]
+    if any(k in ui for k in service_keywords):
+        return "service"
+
+    # Booking-related keywords
+    booking_keywords = ["book", "reservation", "reserve", "check-in", "check in", "check out", "room", "booking"]
+    if any(k in ui for k in booking_keywords):
+        return "booking"
+
+    # If unclear, ask the LLM for help
+    try:
+        resp = generate_response(f"Decide intent (booking or service) for this message: {user_message}")
+        intent_raw = (resp or "").strip().lower()
+        if intent_raw in ("booking", "service"):
+            return intent_raw
+        if any(k in intent_raw for k in booking_keywords):
+            return "booking"
+        if any(k in intent_raw for k in service_keywords):
+            return "service"
+    except Exception as e:
+        print(f"[generate_response error] {e}")
+
+    # Final fallback
     return "unknown"
