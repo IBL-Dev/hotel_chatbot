@@ -4,12 +4,12 @@ from llama_index.llms.gemini import Gemini
 from const.intent_config import INTENTS, DEFAULT_INTENT
 from services.gemini_service import generate_response
 
-# Load environment variables from .env
+# Load .env
 load_dotenv()
 
 
 def get_llm():
-    """Return a Gemini LLM instance using the API key from .env."""
+    """Return Gemini instance with API key."""
     gemini_key = os.getenv("GEMINI_API_KEY")
     if not gemini_key:
         raise ValueError("GEMINI_API_KEY not found in .env file")
@@ -28,24 +28,8 @@ def classify_intent(user_message: str) -> str:
 
     ui = user_message.lower()
 
-    # ---- Step 1a: Explicit phrase checks to avoid false positives ----
-    if "room service" in ui or "room-service" in ui:
-        return "service"
-
-    # ---- Step 1b: Prefer service keywords over generic 'room' booking matches ----
-    service_keywords = INTENTS.get("service", [])
-    if any(k in ui for k in service_keywords):
-        return "service"
-
-    # ---- Step 1c: Booking keywords (rooms, reservation, etc.) ----
-    booking_keywords = INTENTS.get("booking", [])
-    if any(k in ui for k in booking_keywords):
-        return "booking"
-
-    # ---- Step 1d: Other intents (complaint, how_to_use, etc.) ----
+    # ---- Step 1: Keyword-based classification ----
     for intent, keywords in INTENTS.items():
-        if intent in ("service", "booking"):
-            continue
         if any(k in ui for k in keywords):
             return intent
 
@@ -60,7 +44,6 @@ def classify_intent(user_message: str) -> str:
 
         Message: {user_message}
         """
-
         llm = get_llm()
         response = llm.complete(prompt)
         intent_raw = (response.text or "").strip().lower()
