@@ -35,6 +35,6 @@ install dependacy :- pip install -r requirements.txt
 # 📂 Navigate into the project folder
 cd hotel_chatbot_backend
 \# Activate virtual environment in PowerShell (example assumes .venv folder)
-.\.venv\Scripts\Activate.ps1
+.\venv\Scripts\Activate.ps1
 python app.py
 
