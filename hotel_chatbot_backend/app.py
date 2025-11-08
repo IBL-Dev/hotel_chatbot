@@ -1,29 +1,25 @@
-# hotel_chatbot_backend/app.py
-
 from flask import Flask
 from flask_cors import CORS
 from dotenv import load_dotenv
 import os
 
 from config.database import database
+from services.chat import chat_bp
 
-# Load .env variables
 load_dotenv()
 
 def create_app():
-    """Open/Closed Principle: Create Flask app with extensible structure"""
     app = Flask(__name__)
     CORS(app)
-
-    # Connect to database
     database.connect()
+
+    app.register_blueprint(chat_bp, url_prefix='/services')
 
     @app.route('/')
     def home():
         return {"message": "Hotel Chatbot API running successfully"}
 
     return app
-
 
 if __name__ == '__main__':
     app = create_app()
