@@ -1,48 +1,105 @@
 import os
-import requests
-from abc import ABC, abstractmethod
+import asyncio
+import threading
+from llama_index.core.tools import FunctionTool
+from llama_index.core.agent import ReActAgent
+from llama_index.llms.gemini import Gemini
 
 
-# --- BaseAgent (Abstract Class) ---
-class BaseAgent(ABC):
-    """Base interface for all AI agents."""
-    @abstractmethod
-    def generate_response(self, prompt: str) -> str:
-        pass
+# =========================================================
+# ✅ Gemini setup
+# =========================================================
+GEMINI_KEY = os.getenv("GEMINI_API_KEY")
+if not GEMINI_KEY:
+    raise ValueError("❌ GEMINI_API_KEY not found in environment variables!")
+
+MODEL_NAME = os.getenv("GEMINI_MODEL", "models/gemini-1.5-flash")
+llm = Gemini(model=MODEL_NAME, api_key=GEMINI_KEY)
 
 
-# --- ReactAgent (Implementation using Gemini Free API) ---
-class ReactAgent(BaseAgent):
-    """Hotel chatbot agent using Gemini Free API."""
+# =========================================================
+# 🏨 Hotel tools
+# =========================================================
+def check_room_availability(date: str):
+    return f"Rooms available on {date}: Deluxe, Suite, and Family Rooms."
+
+def get_restaurant_menu():
+    return "Today's menu: Chicken Fried Rice, Spicy Curry, and Fresh Juice."
+
+
+availability_tool = FunctionTool.from_defaults(
+    fn=check_room_availability,
+    name="check_room_availability",
+    description="Check available rooms for a given date."
+)
+menu_tool = FunctionTool.from_defaults(
+    fn=get_restaurant_menu,
+    name="get_restaurant_menu",
+    description="Get today's restaurant menu."
+)
+
+
+# =========================================================
+# 🤖 ReAct Agent + Background Loop
+# =========================================================
+agent = ReActAgent(
+    tools=[availability_tool, menu_tool],
+    llm=llm,
+    verbose=True
+)
+
+
+class BackgroundLoop:
+    """Keep one event loop running forever in its own thread."""
+    _instance = None
 
     def __init__(self):
-        self.api_key = os.getenv("GEMINI_API_KEY")
-        self.model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-        self.endpoint = f"https://generativelanguage.googleapis.com/v1/models/{self.model}:generateContent?key={self.api_key}"
+        self.loop = asyncio.new_event_loop()
+        t = threading.Thread(target=self._run_loop, daemon=True)
+        t.start()
+
+    def _run_loop(self):
+        asyncio.set_event_loop(self.loop)
+        self.loop.run_forever()
+
+    @classmethod
+    def get_loop(cls):
+        if not cls._instance:
+            cls._instance = BackgroundLoop()
+        return cls._instance.loop
+
+
+# =========================================================
+# 💬 Agent wrapper with memory
+# =========================================================
+class ReactAgent:
+    def __init__(self):
+        self.agent = agent
+        self.memory = []
+        self.loop = BackgroundLoop.get_loop()
 
     def generate_response(self, prompt: str) -> str:
-        """Generate text using Gemini Free API."""
-        try:
-            payload = {
-                "contents": [
-                    {"parts": [{"text": prompt}]}
-                ]
-            }
-
-            headers = {"Content-Type": "application/json"}
-
-            response = requests.post(self.endpoint, json=payload, headers=headers, timeout=30)
-
-            if response.status_code != 200:
-                return f"Gemini API error: {response.text}"
-
-            data = response.json()
-            return (
-                data.get("candidates", [{}])[0]
-                .get("content", {})
-                .get("parts", [{}])[0]
-                .get("text", "No response text")
+        async def _run():
+            context = "\n".join(
+                [f"User: {m['user']}\nBot: {m['bot']}" for m in self.memory]
             )
+            full_prompt = f"{context}\nUser: {prompt}\nBot:"
+            result = await self.agent.run(user_msg=full_prompt)
+            return result
+
+        try:
+            future = asyncio.run_coroutine_threadsafe(_run(), self.loop)
+            result = future.result(timeout=60)
+
+            # Extract message text
+            if hasattr(result, "response"):
+                text = getattr(result.response, "content", str(result.response))
+            else:
+                text = str(result)
+
+            # Remember chat history
+            self.memory.append({"user": prompt, "bot": text})
+            return text
 
         except Exception as e:
             return f"Error generating response: {e}"

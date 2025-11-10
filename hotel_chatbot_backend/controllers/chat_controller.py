@@ -1,6 +1,9 @@
 from flask import request, jsonify
 from services.chat_service import ChatService
 
+# Initialize global chat service (persistent memory)
+chat_service = ChatService()
+
 class ChatController:
     @staticmethod
     def chat():
@@ -11,8 +14,7 @@ class ChatController:
             return jsonify({"error": "No message provided"}), 400
 
         try:
-            service = ChatService()
-            reply = service.get_response(message)
+            reply = chat_service.get_response(message)
             return jsonify({"response": reply}), 200
         except Exception as e:
             return jsonify({"error": str(e)}), 500

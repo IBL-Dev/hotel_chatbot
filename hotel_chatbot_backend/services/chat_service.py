@@ -1,9 +1,8 @@
 from agents.react_agent import ReactAgent
 
 class ChatService:
-    """Handles chatbot logic and connects to Gemini React Agent."""
-
     def __init__(self):
+        # One agent for all chats (shared memory)
         self.agent = ReactAgent()
 
     def get_response(self, message: str) -> str:

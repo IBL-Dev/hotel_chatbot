@@ -1,10 +1,10 @@
 from flask import Flask
 from flask_cors import CORS
 from dotenv import load_dotenv
-from routes.chat_routes import chat_bp
 import os
 
 load_dotenv()
+from routes.chat_routes import chat_bp
 
 def create_app():
     app = Flask(__name__)
@@ -13,10 +13,9 @@ def create_app():
 
     @app.route("/")
     def home():
-        return {"message": "Hotel Chatbot running with Gemini Free API"}
+        return {"message": "Hotel Chatbot running with memory + ReActAgent"}
 
     return app
-
 
 if __name__ == "__main__":
     app = create_app()
