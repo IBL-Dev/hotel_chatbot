@@ -1,5 +1,19 @@
+# --- Core Flask dependencies ---
 Flask==3.0.3
-pymongo==4.8.0
-python-dotenv==1.0.1
 Flask-Cors==4.0.1
-requests==2.26.0
+python-dotenv==1.0.1
+
+# --- HTTP requests (updated to match LlamaIndex dependency) ---
+requests>=2.31.0
+
+# --- Database (MongoDB) ---
+pymongo==4.8.0
+
+# --- LlamaIndex + Ollama integration ---
+llama-index==0.11.18
+llama-index-llms-ollama==0.3.5
+llama-index-core==0.11.18
+
+# --- Optional utilities ---
+numpy>=1.24.0
+tqdm>=4.66.0
