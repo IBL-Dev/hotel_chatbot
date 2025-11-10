@@ -1,0 +1,65 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pdb
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+pip-wheel-metadata/
+*.manifest
+*.spec
+
+# --- Environment variables ---
+.env
+*.env
+
+# --- Virtual environments ---
+venv/
+env/
+ENV/
+.venv/
+env.bak/
+venv.bak/
+
+# --- VS Code ---
+.vscode/
+
+# --- OS generated files ---
+.DS_Store
+Thumbs.db
+
+# --- Logs ---
+*.log
+logs/
+*.sqlite3
+
+# --- PyInstaller ---
+*.manifest
+*.spec
+
+# --- Unit test / coverage reports ---
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# --- Flask specific ---
+instance/
+.webassets-cache
+
+# --- Temporary files ---
+*.tmp
+*.swp
+*.bak
+*.old
