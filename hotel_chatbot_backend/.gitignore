@@ -3,7 +3,6 @@ __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
-*.pyc
 *.pdb
 *.egg
 *.egg-info/
@@ -56,10 +55,17 @@ coverage.xml
 
 # --- Flask specific ---
 instance/
-.webassets-cache
+.webassets-cache/
 
 # --- Temporary files ---
 *.tmp
 *.swp
 *.bak
 *.old
+
+# --- IDE specific (optional) ---
+.idea/
+*.iml
+
+# --- System specific ---
+$RECYCLE.BIN/
