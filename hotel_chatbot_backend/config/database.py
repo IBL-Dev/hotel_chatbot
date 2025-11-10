@@ -1,15 +1,27 @@
-import os
+# hotel_chatbot_backend/config/database.py
+
 from pymongo import MongoClient
 from dotenv import load_dotenv
+import os
 
-# Load environment variables
 load_dotenv()
 
-# Get Mongo URI from .env
-MONGO_URI = os.getenv("MONGO_URI")
+class Database:
+    """Single Responsibility: Manage MongoDB connection"""
 
-# Connect to MongoDB
-client = MongoClient(MONGO_URI)
-db = client.get_database()  # automatically uses the database in URI
+    def __init__(self):
+        self.client = None
+        self.db = None
 
-print(f"✅ Connected to MongoDB database: {db.name}")
+    def connect(self):
+        try:
+            mongo_uri = os.getenv("MONGO_URI")
+            self.client = MongoClient(mongo_uri)
+            self.db = self.client.get_database()  # Default DB from URI
+            print("✅ Database connection successful")
+        except Exception as e:
+            print("❌ Database connection failed:", e)
+            raise e
+
+# Create a global instance
+database = Database()

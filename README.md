@@ -22,13 +22,19 @@ If you already have the project folder, open it in **VS Code**.
 Otherwise, clone it from GitHub:
 
 ```bash
+
+Python 3.12.10
+
 # 🧬 Clone the repository
 git clone https://github.com/yourusername/hotel_chatbot_backend.git
+
+
 
 install dependacy :- pip install -r requirements.txt
 
 # 📂 Navigate into the project folder
 cd hotel_chatbot_backend
-run .\venv\Scripts\activate
-run python app.py
+\# Activate virtual environment in PowerShell (example assumes .venv folder)
+.\venv\Scripts\Activate.ps1
+python app.py
 
