@@ -1,9 +1,19 @@
 import os
 import requests
-from .base_agent import BaseAgent
+from abc import ABC, abstractmethod
 
+
+# --- BaseAgent (Abstract Class) ---
+class BaseAgent(ABC):
+    """Base interface for all AI agents."""
+    @abstractmethod
+    def generate_response(self, prompt: str) -> str:
+        pass
+
+
+# --- ReactAgent (Implementation using Gemini Free API) ---
 class ReactAgent(BaseAgent):
-    """Hotel chatbot using Gemini Free API (no Vertex AI)."""
+    """Hotel chatbot agent using Gemini Free API."""
 
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY")
@@ -11,7 +21,7 @@ class ReactAgent(BaseAgent):
         self.endpoint = f"https://generativelanguage.googleapis.com/v1/models/{self.model}:generateContent?key={self.api_key}"
 
     def generate_response(self, prompt: str) -> str:
-        """Generate text using Gemini free API."""
+        """Generate text using Gemini Free API."""
         try:
             payload = {
                 "contents": [
@@ -33,5 +43,6 @@ class ReactAgent(BaseAgent):
                 .get("parts", [{}])[0]
                 .get("text", "No response text")
             )
+
         except Exception as e:
             return f"Error generating response: {e}"
