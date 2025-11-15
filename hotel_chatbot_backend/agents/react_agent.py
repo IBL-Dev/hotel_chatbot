@@ -8,9 +8,9 @@ from llama_index.llms.gemini import Gemini
 from promt.welcome_prompt import get_custom_welcome_prompt  # your structured prompt builder
 from promt.intent_prompt import get_intent_prompt
 
-
+                    
 # =========================================================
-# ✅ Gemini setup
+#  Gemini setup
 # =========================================================
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 if not GEMINI_KEY:
@@ -21,7 +21,7 @@ llm = Gemini(model=MODEL_NAME, api_key=GEMINI_KEY)
 
 
 # =========================================================
-# 🧠 Load keyword data (from JSON files)
+#  Load keyword data (from JSON files)
 # =========================================================
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -48,7 +48,7 @@ SERVICE_KEYWORDS = [k.lower() for k in SERVICE_DATA.get("service_keywords", [])]
 
 
 # =========================================================
-# 🏨 Hotel tools
+#  Hotel tools
 # =========================================================
 def check_room_availability(date: str):
     """Simulate checking hotel room availability."""
@@ -73,7 +73,7 @@ menu_tool = FunctionTool.from_defaults(
 
 
 # =========================================================
-# 🤖 ReAct Agent setup
+#  ReAct Agent setup
 # =========================================================
 agent = ReActAgent(
     tools=[availability_tool, menu_tool],
@@ -106,7 +106,7 @@ class BackgroundLoop:
 
 
 # =========================================================
-# 💬 ReactAgent wrapper with memory + filtering
+#  ReactAgent wrapper with memory + filtering
 # =========================================================
 class ReactAgent:
     def __init__(self):
@@ -152,7 +152,7 @@ class ReactAgent:
     def generate_response(self, prompt: str) -> str:
         """Generate chatbot response based on input."""
 
-        # 👋 Handle greetings
+        #  Handle greetings
         if self._is_greeting(prompt):
             return (
                 "🏨 **Welcome to Anjana Guest!** 🌸\n"
@@ -161,11 +161,11 @@ class ReactAgent:
                 "How can I assist you today?"
             )
 
-        # 🚫 Filter non-hotel topics
+        # Filter non-hotel topics
         if not self._is_hotel_related(prompt):
             return "Please ask booking or service related questions."
 
-        # 🧭 Detect user intent
+        #  Detect user intent
         if self._is_booking_related(prompt):
             intent = "booking"
         elif self._is_service_related(prompt):
@@ -173,7 +173,7 @@ class ReactAgent:
         else:
             intent = "general"
 
-        # 🧠 Use AI agent for hotel-related queries
+        #  Use AI agent for hotel-related queries
         async def _run():
                 structured_prompt = get_intent_prompt(intent, prompt)
                 result = await self.agent.run(user_msg=structured_prompt)
