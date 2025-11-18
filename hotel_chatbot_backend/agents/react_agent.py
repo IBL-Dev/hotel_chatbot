@@ -10,7 +10,7 @@ from llama_index.core.agent import ReActAgent
 from config.gemini_config import load_gemini
 from promt.welcome_prompt import get_custom_welcome_prompt
 from promt.intent_prompt import get_intent_prompt
-from intent.intent_registry import INTENT_CONFIG
+from intent.intention_registry import INTENT_CONFIG
 
 
 # =========================================================
