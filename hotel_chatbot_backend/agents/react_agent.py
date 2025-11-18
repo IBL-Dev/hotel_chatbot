@@ -3,32 +3,29 @@ import asyncio
 import threading
 from difflib import SequenceMatcher
 import importlib
+import warnings
 
 from llama_index.core.tools import FunctionTool
 from llama_index.core.agent import ReActAgent
-from llama_index.core.memory import ChatMemoryBuffer
 
-# ---------------------------------------------------
-# CORRECT: Load Gemini (NOT Ollama, NOT backend path)
-# ---------------------------------------------------
 from config.gemini_config import load_gemini
-
-# Custom Prompts
 from promt.welcome_prompt import get_custom_welcome_prompt
 from promt.intent_prompt import get_intent_prompt
-
-# Intent registry
 from intent.intention_registry import INTENT_CONFIG
 
+# =========================================================
+# Suppress Pydantic Warning
+# =========================================================
+warnings.filterwarnings('ignore', category=UserWarning, module='pydantic._internal._generate_schema')
 
 # =========================================================
-# Load LLM (Gemini Only)
+# Load Gemini LLM
 # =========================================================
 llm = load_gemini()
 
 
 # =========================================================
-# Fuzzy Matching Utilities
+# Fuzzy Matching
 # =========================================================
 def fuzzy_match(word: str, keywords: list, threshold=0.75):
     word = word.lower()
@@ -49,7 +46,7 @@ def match_intent(text: str, keywords: list):
 
 
 # =========================================================
-# Optional Tools
+# Example tools (optional)
 # =========================================================
 def check_room_availability(date: str):
     return f"Rooms available on {date}: Deluxe, Suite, Family."
@@ -57,20 +54,15 @@ def check_room_availability(date: str):
 def get_restaurant_menu():
     return "Today's menu: Chicken Fried Rice, Spicy Curry, Fresh Juice."
 
+
 availability_tool = FunctionTool.from_defaults(fn=check_room_availability)
 menu_tool = FunctionTool.from_defaults(fn=get_restaurant_menu)
 
 
-# =========================================================
-# ReActAgent (Gemini-compatible)
-# =========================================================
-memory = ChatMemoryBuffer.from_defaults(token_limit=2000)
-
-agent = ReActAgent.from_llm(
-    llm=llm,
+agent = ReActAgent.from_tools(
     tools=[availability_tool, menu_tool],
-    memory=memory,
-    verbose=True
+    llm=llm,
+    verbose=True,
 )
 
 
@@ -96,7 +88,7 @@ class BackgroundLoop:
 
 
 # =========================================================
-# Main ReactAgent
+# Main React Agent
 # =========================================================
 class ReactAgent:
     def __init__(self):
@@ -105,14 +97,16 @@ class ReactAgent:
         self.memory = []
 
     # ------------------------------------------------------
-    # Intent Detection
+    # Detect Intent from INTENT_CONFIG
     # ------------------------------------------------------
     def detect_intent(self, text: str) -> str:
         for intent_name, config in INTENT_CONFIG.items():
             keywords = config["keywords"]
+
             if match_intent(text, keywords):
                 return intent_name
-        return "general"
+
+        return "general"   # fallback
 
     # ------------------------------------------------------
     # Generate Response
@@ -123,33 +117,35 @@ class ReactAgent:
         intent_config = INTENT_CONFIG[intent]
 
         # --------------------------------------------------
-        # GREETING INTENT
+        # 1. Greeting Flow — uses Gemini LLM
         # --------------------------------------------------
         if intent == "greeting":
             welcome_prompt = get_custom_welcome_prompt("", "", prompt, False)
 
             async def _run():
-                return await self.agent.run(user_msg=welcome_prompt)
+                return await self.agent.achat(message=welcome_prompt)
 
             fut = asyncio.run_coroutine_threadsafe(_run(), self.loop)
             result = fut.result(timeout=60)
+
             return getattr(result.response, "content", str(result.response))
 
         # --------------------------------------------------
-        # SERVICE HANDLER INTENT
+        # 2. SERVICE FLOW
         # --------------------------------------------------
         service_path = intent_config["service"]
+
         if service_path:
             module = importlib.import_module(service_path)
             handler = module.ServiceHandler()
             return handler.handle(prompt)
 
         # --------------------------------------------------
-        # DEFAULT LLM RESPONSE (Hotel + General)
+        # 3. DEFAULT HOTEL QUERY — fallback to LLM
         # --------------------------------------------------
         async def _run():
             structured_prompt = get_intent_prompt(intent, prompt)
-            return await self.agent.run(user_msg=structured_prompt)
+            return await self.agent.achat(message=structured_prompt)
 
         try:
             fut = asyncio.run_coroutine_threadsafe(_run(), self.loop)
@@ -157,7 +153,6 @@ class ReactAgent:
 
             text = getattr(result.response, "content", str(result.response))
             self.memory.append({"user": prompt, "bot": text, "intent": intent})
-
             return text
 
         except Exception as e:
