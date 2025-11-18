@@ -6,23 +6,27 @@ import importlib
 
 from llama_index.core.tools import FunctionTool
 from llama_index.core.agent import ReActAgent
+from llama_index.core.memory import ChatMemoryBuffer
 
-from config.gemini_config import load_gemini
+# Load Ollama model
+from config.ollama_config import load_ollama
+
+# Custom Prompts
 from promt.welcome_prompt import get_custom_welcome_prompt
 from promt.intent_prompt import get_intent_prompt
 
-# Use local package import (matches how the app is run from this folder)
+# Intent registry config
 from intent.intention_registry import INTENT_CONFIG
 
 
 # =========================================================
-# Load Gemini LLM
+# Load LLM (Ollama Only)
 # =========================================================
-llm = load_gemini()
+llm = load_ollama()
 
 
 # =========================================================
-# Fuzzy Matching
+# Fuzzy Matching Utilities
 # =========================================================
 def fuzzy_match(word: str, keywords: list, threshold=0.75):
     word = word.lower()
@@ -43,7 +47,7 @@ def match_intent(text: str, keywords: list):
 
 
 # =========================================================
-# Example tools (optional)
+# Tools (Optional)
 # =========================================================
 def check_room_availability(date: str):
     return f"Rooms available on {date}: Deluxe, Suite, Family."
@@ -51,20 +55,25 @@ def check_room_availability(date: str):
 def get_restaurant_menu():
     return "Today's menu: Chicken Fried Rice, Spicy Curry, Fresh Juice."
 
-
 availability_tool = FunctionTool.from_defaults(fn=check_room_availability)
 menu_tool = FunctionTool.from_defaults(fn=get_restaurant_menu)
 
 
-agent = ReActAgent(
-    tools=[availability_tool, menu_tool],
+# =========================================================
+# ReActAgent with Memory
+# =========================================================
+memory = ChatMemoryBuffer.from_defaults(token_limit=2000)
+
+agent = ReActAgent.from_llm(
     llm=llm,
+    tools=[availability_tool, menu_tool],
+    memory=memory,
     verbose=True
 )
 
 
 # =========================================================
-# Async Background Loop
+# Async Event Loop (Background)
 # =========================================================
 class BackgroundLoop:
     _instance = None
@@ -94,7 +103,7 @@ class ReactAgent:
         self.memory = []
 
     # ------------------------------------------------------
-    # Detect Intent Dynamically (from INTENT_CONFIG)
+    # Detect Intent
     # ------------------------------------------------------
     def detect_intent(self, text: str) -> str:
         for intent_name, config in INTENT_CONFIG.items():
@@ -103,10 +112,10 @@ class ReactAgent:
             if match_intent(text, keywords):
                 return intent_name
 
-        return "general"   # fallback intent
+        return "general"
 
     # ------------------------------------------------------
-    # Generate Response
+    # Response Handler
     # ------------------------------------------------------
     def generate_response(self, prompt: str) -> str:
 
@@ -128,18 +137,17 @@ class ReactAgent:
             return getattr(result.response, "content", str(result.response))
 
         # --------------------------------------------------
-        # SERVICE FLOW — load service handler dynamically
+        # SERVICE HANDLER
         # --------------------------------------------------
         service_path = intent_config["service"]
 
-        if service_path:   # e.g., services.booking_service
-            # import service modules using the local package path
+        if service_path:   # e.g. services.booking_service
             module = importlib.import_module(service_path)
             handler = module.ServiceHandler()
             return handler.handle(prompt)
 
         # --------------------------------------------------
-        # DEFAULT HOTEL QUERY — fallback to LLM
+        # DEFAULT HOTEL QUERY (LLM)
         # --------------------------------------------------
         async def _run():
             structured_prompt = get_intent_prompt(intent, prompt)
@@ -151,6 +159,7 @@ class ReactAgent:
 
             text = getattr(result.response, "content", str(result.response))
             self.memory.append({"user": prompt, "bot": text, "intent": intent})
+
             return text
 
         except Exception as e:

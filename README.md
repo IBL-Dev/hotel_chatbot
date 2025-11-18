@@ -28,7 +28,7 @@ Python 3.12.10
 # 🧬 Clone the repository
 git clone https://github.com/yourusername/hotel_chatbot_backend.git
 
-
+python -m venv venv
 
 install dependacy :- pip install -r requirements.txt
 
