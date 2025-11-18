@@ -13,20 +13,14 @@ from promt.welcome_prompt import get_custom_welcome_prompt
 from promt.intent_prompt import get_intent_prompt
 from intent.intention_registry import INTENT_CONFIG
 
-# =========================================================
 # Suppress Pydantic Warning
-# =========================================================
 warnings.filterwarnings('ignore', category=UserWarning, module='pydantic._internal._generate_schema')
 
-# =========================================================
 # Load Gemini LLM
-# =========================================================
 llm = load_gemini()
 
 
-# =========================================================
 # Fuzzy Matching
-# =========================================================
 def fuzzy_match(word: str, keywords: list, threshold=0.75):
     word = word.lower()
     return any(
@@ -34,20 +28,34 @@ def fuzzy_match(word: str, keywords: list, threshold=0.75):
         for kw in keywords
     )
 
-
+# Identify all keywords in text
 def match_intent(text: str, keywords: list):
-    text = text.lower()
+    text = text.lower().strip()
+
+    # Split the text into words
     words = text.split()
 
-    return any(
-        (kw in text) or any(fuzzy_match(w, keywords) for w in words)
-        for kw in keywords
-    )
+    for kw in keywords:
+        kw_lower = kw.lower()
+
+        # 1) Direct keyword exists
+        if kw_lower in text:
+            return True
+
+        # 2) Fuzzy match keyword with entire text
+        if fuzzy_match(kw_lower, text):
+            return True
+
+        # 3) Fuzzy match keyword with every word in user input
+        for w in words:
+            if fuzzy_match(w, kw_lower):
+                return True
+
+    return False
 
 
-# =========================================================
+
 # Example tools (optional)
-# =========================================================
 def check_room_availability(date: str):
     return f"Rooms available on {date}: Deluxe, Suite, Family."
 
@@ -66,9 +74,7 @@ agent = ReActAgent.from_tools(
 )
 
 
-# =========================================================
 # Async Background Loop
-# =========================================================
 class BackgroundLoop:
     _instance = None
 
@@ -87,18 +93,14 @@ class BackgroundLoop:
         return cls._instance.loop
 
 
-# =========================================================
 # Main React Agent
-# =========================================================
 class ReactAgent:
     def __init__(self):
         self.agent = agent
         self.loop = BackgroundLoop.get_loop()
         self.memory = []
 
-    # ------------------------------------------------------
     # Detect Intent from INTENT_CONFIG
-    # ------------------------------------------------------
     def detect_intent(self, text: str) -> str:
         for intent_name, config in INTENT_CONFIG.items():
             keywords = config["keywords"]
@@ -108,17 +110,13 @@ class ReactAgent:
 
         return "general"   # fallback
 
-    # ------------------------------------------------------
     # Generate Response
-    # ------------------------------------------------------
     def generate_response(self, prompt: str) -> str:
 
         intent = self.detect_intent(prompt)
         intent_config = INTENT_CONFIG[intent]
 
-        # --------------------------------------------------
         # 1. Greeting Flow — uses Gemini LLM
-        # --------------------------------------------------
         if intent == "greeting":
             welcome_prompt = get_custom_welcome_prompt("", "", prompt, False)
 
@@ -130,9 +128,8 @@ class ReactAgent:
 
             return getattr(result.response, "content", str(result.response))
 
-        # --------------------------------------------------
         # 2. SERVICE FLOW
-        # --------------------------------------------------
+        
         service_path = intent_config["service"]
 
         if service_path:
@@ -140,9 +137,7 @@ class ReactAgent:
             handler = module.ServiceHandler()
             return handler.handle(prompt)
 
-        # --------------------------------------------------
         # 3. DEFAULT HOTEL QUERY — fallback to LLM
-        # --------------------------------------------------
         async def _run():
             structured_prompt = get_intent_prompt(intent, prompt)
             return await self.agent.achat(message=structured_prompt)

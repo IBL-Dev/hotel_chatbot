@@ -18,9 +18,9 @@ class Database:
             mongo_uri = os.getenv("MONGO_URI")
             self.client = MongoClient(mongo_uri)
             self.db = self.client.get_database()  # Default DB from URI
-            print("✅ Database connection successful")
+            print("Database connection successful")
         except Exception as e:
-            print("❌ Database connection failed:", e)
+            print(" Database connection failed:", e)
             raise e
 
 # Create a global instance

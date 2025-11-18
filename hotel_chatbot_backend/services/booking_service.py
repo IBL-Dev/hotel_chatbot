@@ -1,18 +1,21 @@
-class ServiceHandler:
-    def handle(self, user_message: str) -> str:
+from services.base_service import BaseService
+from promt.booking_response_prompt import get_booking_response_prompt
+from config.gemini_config import load_gemini
+import re
 
-        text = user_message.lower()
+llm = load_gemini()
 
-        if "price" in text or "rate" in text:
-            return "Our room rates vary by type and season. Would you prefer Single, Double, or Family rooms? 🏨"
+class BookingHandler(BaseService):
 
-        if "availability" in text or "available" in text:
-            return "Sure! Please tell me your check-in date, and I’ll check room availability for you. 🛏️"
+    def handle(self, message: str):
 
-        if "cancel" in text:
-            return "No problem! Please share your booking reference number so I can cancel it for you. ❌"
+        prompt = get_booking_response_prompt(message)
+        response = llm.complete(prompt).text.strip()
 
-        if "extend" in text:
-            return "Of course! How many extra nights would you like to stay? 😊"
+        msg = re.search(r"Message:\s*(.+?)(?=Badge:)", response, re.DOTALL)
+        badge = re.search(r"Badge:\s*(.+)$", response, re.DOTALL)
 
-        return "I'd be happy to help with your booking! May I know your check-in date and number of guests? ✨"
+        message_out = msg.group(1).strip() if msg else response
+        badge_out = badge.group(1).strip() if badge else "calendar icon"
+
+        return f"{message_out}\n\n🎨 Suggested Icon: {badge_out}"
