@@ -1,7 +1,9 @@
-import os
 from utils.json_loader import load_json_keywords
+import os
 
+# Base directory (project root for the backend)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 
 INTENT_CONFIG = {
     "greeting": {
@@ -17,7 +19,7 @@ INTENT_CONFIG = {
         "service": "services.service_service"
     },
     "general": {
-        "keywords": load_json_keywords(BASE_DIR, "hotel_keywords.json", "hotel_keywords"),
+        "keywords": [],               # MUST BE EMPTY ← this is the fallback
         "service": "services.general_service"
     }
 }

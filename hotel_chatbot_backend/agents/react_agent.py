@@ -10,6 +10,8 @@ from llama_index.core.agent import ReActAgent
 from config.gemini_config import load_gemini
 from promt.welcome_prompt import get_custom_welcome_prompt
 from promt.intent_prompt import get_intent_prompt
+
+# Use local package import (matches how the app is run from this folder)
 from intent.intention_registry import INTENT_CONFIG
 
 
@@ -41,7 +43,7 @@ def match_intent(text: str, keywords: list):
 
 
 # =========================================================
-# Example hotel tools (optional)
+# Example tools (optional)
 # =========================================================
 def check_room_availability(date: str):
     return f"Rooms available on {date}: Deluxe, Suite, Family."
@@ -69,14 +71,14 @@ class BackgroundLoop:
 
     def __init__(self):
         self.loop = asyncio.new_event_loop()
-        threading.Thread(target=self._run, daemon=True).start()
+        threading.Thread(target=self._run_loop, daemon=True).start()
 
-    def _run(self):
+    def _run_loop(self):
         asyncio.set_event_loop(self.loop)
         self.loop.run_forever()
 
     @classmethod
-    def loop(cls):
+    def get_loop(cls):
         if not cls._instance:
             cls._instance = BackgroundLoop()
         return cls._instance.loop
@@ -88,20 +90,20 @@ class BackgroundLoop:
 class ReactAgent:
     def __init__(self):
         self.agent = agent
-        self.loop = BackgroundLoop.loop()
+        self.loop = BackgroundLoop.get_loop()
         self.memory = []
 
     # ------------------------------------------------------
     # Detect Intent Dynamically (from INTENT_CONFIG)
     # ------------------------------------------------------
     def detect_intent(self, text: str) -> str:
-        for intent, config in INTENT_CONFIG.items():
+        for intent_name, config in INTENT_CONFIG.items():
             keywords = config["keywords"]
 
             if match_intent(text, keywords):
-                return intent
+                return intent_name
 
-        return "general"
+        return "general"   # fallback intent
 
     # ------------------------------------------------------
     # Generate Response
@@ -112,7 +114,7 @@ class ReactAgent:
         intent_config = INTENT_CONFIG[intent]
 
         # --------------------------------------------------
-        # 1. Greeting Flow (goes to Gemini)
+        # Greeting Flow
         # --------------------------------------------------
         if intent == "greeting":
             welcome_prompt = get_custom_welcome_prompt("", "", prompt, False)
@@ -126,21 +128,22 @@ class ReactAgent:
             return getattr(result.response, "content", str(result.response))
 
         # --------------------------------------------------
-        # 2. SERVICE FLOW — dynamic service loader
+        # SERVICE FLOW — load service handler dynamically
         # --------------------------------------------------
         service_path = intent_config["service"]
 
-        if service_path:   # e.g. "services.booking_service"
+        if service_path:   # e.g., services.booking_service
+            # import service modules using the local package path
             module = importlib.import_module(service_path)
             handler = module.ServiceHandler()
             return handler.handle(prompt)
 
         # --------------------------------------------------
-        # 3. DEFAULT HOTEL QUERY (fallback to LLM)
+        # DEFAULT HOTEL QUERY — fallback to LLM
         # --------------------------------------------------
         async def _run():
-            structured = get_intent_prompt(intent, prompt)
-            return await self.agent.run(user_msg=structured)
+            structured_prompt = get_intent_prompt(intent, prompt)
+            return await self.agent.run(user_msg=structured_prompt)
 
         try:
             fut = asyncio.run_coroutine_threadsafe(_run(), self.loop)

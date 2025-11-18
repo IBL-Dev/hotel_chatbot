@@ -1,18 +1,10 @@
-class ServiceHandler:
-    def handle(self, user_message: str) -> str:
+from utils.json_loader import load_json_keywords
+import os
 
-        text = user_message.lower()
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-        if "price" in text or "rate" in text:
-            return "Our room rates vary by type and season. Would you prefer Single, Double, or Family rooms?"
+# Load booking keywords
+BOOKING_KEYWORDS = load_json_keywords(BASE_DIR, "booking_keywords.json", "booking_keywords")
 
-        if "availability" in text or "available" in text:
-            return "Sure! Please tell me your check-in date, and I’ll check room availability for you. 🛏️"
-
-        if "cancel" in text:
-            return "To cancel a booking, please share your booking reference number."
-
-        if "extend" in text:
-            return "Absolutely! How long would you like to extend your stay?"
-
-        return "I can help with your room booking! May I know your check-in date and number of guests?"
+class BookingIntent:
+    keywords = BOOKING_KEYWORDS

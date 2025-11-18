@@ -1,24 +1,14 @@
-class ServiceHandler:
-    def handle(self, user_message: str) -> str:
+import os
+from utils.json_loader import load_json_keywords
 
-        text = user_message.lower()
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-        if "restaurant" in text or "food" in text or "menu" in text:
-            return "Our restaurant is open 7 AM – 10 PM. Would you like breakfast, lunch, dinner, or today's menu? 🍽️"
+# Load service keywords from JSON
+SERVICE_KEYWORDS = load_json_keywords(
+    BASE_DIR,
+    "service_keywords.json",
+    "service_keywords"
+)
 
-        if "wifi" in text:
-            return "Our WiFi is free for guests. Would you like the password? 📶"
-
-        if "clean" in text or "housekeeping" in text:
-            return "Housekeeping is available 7 AM – 7 PM. Shall I arrange cleaning for your room? 🧹"
-
-        if "laundry" in text:
-            return "Laundry service is available until 5 PM. Should we pick up your clothes? 👕"
-
-        if "taxi" in text or "pickup" in text:
-            return "We offer taxi and airport pickup services. Where would you like to go? 🚗"
-
-        if "parking" in text:
-            return "Yes, we provide free secure parking. Would you like a reserved spot? 🅿️"
-
-        return "Sure! I can help with guest services like food, WiFi, laundry, parking, and more. What do you need? 😊"
+class ServiceIntent:
+    keywords = SERVICE_KEYWORDS
