@@ -1,5 +1,5 @@
 from promt.general_prompt import get_general_intent_prompt
-from hotel_chatbot_backend.config.ollama_config import load_gemini
+from hotel_chatbot_backend.config.gemini_config import load_gemini
 
 llm = load_gemini()
 

@@ -8,21 +8,23 @@ from llama_index.core.tools import FunctionTool
 from llama_index.core.agent import ReActAgent
 from llama_index.core.memory import ChatMemoryBuffer
 
-# Load Ollama model
-from config.ollama_config import load_ollama
+# ---------------------------------------------------
+# CORRECT: Load Gemini (NOT Ollama, NOT backend path)
+# ---------------------------------------------------
+from config.gemini_config import load_gemini
 
 # Custom Prompts
 from promt.welcome_prompt import get_custom_welcome_prompt
 from promt.intent_prompt import get_intent_prompt
 
-# Intent registry config
+# Intent registry
 from intent.intention_registry import INTENT_CONFIG
 
 
 # =========================================================
-# Load LLM (Ollama Only)
+# Load LLM (Gemini Only)
 # =========================================================
-llm = load_ollama()
+llm = load_gemini()
 
 
 # =========================================================
@@ -47,7 +49,7 @@ def match_intent(text: str, keywords: list):
 
 
 # =========================================================
-# Tools (Optional)
+# Optional Tools
 # =========================================================
 def check_room_availability(date: str):
     return f"Rooms available on {date}: Deluxe, Suite, Family."
@@ -60,7 +62,7 @@ menu_tool = FunctionTool.from_defaults(fn=get_restaurant_menu)
 
 
 # =========================================================
-# ReActAgent with Memory
+# ReActAgent (Gemini-compatible)
 # =========================================================
 memory = ChatMemoryBuffer.from_defaults(token_limit=2000)
 
@@ -73,7 +75,7 @@ agent = ReActAgent.from_llm(
 
 
 # =========================================================
-# Async Event Loop (Background)
+# Async Background Loop
 # =========================================================
 class BackgroundLoop:
     _instance = None
@@ -94,7 +96,7 @@ class BackgroundLoop:
 
 
 # =========================================================
-# Main React Agent
+# Main ReactAgent
 # =========================================================
 class ReactAgent:
     def __init__(self):
@@ -103,19 +105,17 @@ class ReactAgent:
         self.memory = []
 
     # ------------------------------------------------------
-    # Detect Intent
+    # Intent Detection
     # ------------------------------------------------------
     def detect_intent(self, text: str) -> str:
         for intent_name, config in INTENT_CONFIG.items():
             keywords = config["keywords"]
-
             if match_intent(text, keywords):
                 return intent_name
-
         return "general"
 
     # ------------------------------------------------------
-    # Response Handler
+    # Generate Response
     # ------------------------------------------------------
     def generate_response(self, prompt: str) -> str:
 
@@ -123,7 +123,7 @@ class ReactAgent:
         intent_config = INTENT_CONFIG[intent]
 
         # --------------------------------------------------
-        # Greeting Flow
+        # GREETING INTENT
         # --------------------------------------------------
         if intent == "greeting":
             welcome_prompt = get_custom_welcome_prompt("", "", prompt, False)
@@ -133,21 +133,19 @@ class ReactAgent:
 
             fut = asyncio.run_coroutine_threadsafe(_run(), self.loop)
             result = fut.result(timeout=60)
-
             return getattr(result.response, "content", str(result.response))
 
         # --------------------------------------------------
-        # SERVICE HANDLER
+        # SERVICE HANDLER INTENT
         # --------------------------------------------------
         service_path = intent_config["service"]
-
-        if service_path:   # e.g. services.booking_service
+        if service_path:
             module = importlib.import_module(service_path)
             handler = module.ServiceHandler()
             return handler.handle(prompt)
 
         # --------------------------------------------------
-        # DEFAULT HOTEL QUERY (LLM)
+        # DEFAULT LLM RESPONSE (Hotel + General)
         # --------------------------------------------------
         async def _run():
             structured_prompt = get_intent_prompt(intent, prompt)
