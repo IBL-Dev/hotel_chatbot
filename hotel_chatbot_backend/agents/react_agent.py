@@ -2,34 +2,27 @@ import os
 import asyncio
 import threading
 from difflib import SequenceMatcher
+import importlib
 
 from llama_index.core.tools import FunctionTool
 from llama_index.core.agent import ReActAgent
 
 from config.gemini_config import load_gemini
-from utils.json_loader import load_json_keywords
 from promt.welcome_prompt import get_custom_welcome_prompt
 from promt.intent_prompt import get_intent_prompt
+from intent.intent_registry import INTENT_CONFIG
 
 
+# =========================================================
 # Load Gemini LLM
+# =========================================================
 llm = load_gemini()
 
 
-
-# Load keyword files
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-GREETINGS = load_json_keywords(BASE_DIR, "welcome.json", "greetings")
-HOTEL_KEYWORDS = load_json_keywords(BASE_DIR, "hotel_keywords.json", "hotel_keywords")
-BOOKING_KEYWORDS = load_json_keywords(BASE_DIR, "booking_keywords.json", "booking_keywords")
-SERVICE_KEYWORDS = load_json_keywords(BASE_DIR, "service_keywords.json", "service_keywords")
-
-
 # =========================================================
-# Utility: Fuzzy Matching
+# Fuzzy Matching
 # =========================================================
-def fuzzy_match(word: str, keywords: list, threshold: float = 0.75) -> bool:
+def fuzzy_match(word: str, keywords: list, threshold=0.75):
     word = word.lower()
     return any(
         SequenceMatcher(None, word, kw.lower()).ratio() >= threshold
@@ -37,31 +30,30 @@ def fuzzy_match(word: str, keywords: list, threshold: float = 0.75) -> bool:
     )
 
 
+def match_intent(text: str, keywords: list):
+    text = text.lower()
+    words = text.split()
+
+    return any(
+        (kw in text) or any(fuzzy_match(w, keywords) for w in words)
+        for kw in keywords
+    )
+
+
 # =========================================================
-# Hotel Domain Tools
+# Example hotel tools (optional)
 # =========================================================
 def check_room_availability(date: str):
-    return f"Rooms available on {date}: Deluxe, Suite, and Family Rooms."
-
+    return f"Rooms available on {date}: Deluxe, Suite, Family."
 
 def get_restaurant_menu():
-    return "Today's menu: Chicken Fried Rice, Spicy Curry, and Fresh Juice."
+    return "Today's menu: Chicken Fried Rice, Spicy Curry, Fresh Juice."
 
 
-availability_tool = FunctionTool.from_defaults(
-    fn=check_room_availability,
-    name="check_room_availability"
-)
-
-menu_tool = FunctionTool.from_defaults(
-    fn=get_restaurant_menu,
-    name="get_restaurant_menu"
-)
+availability_tool = FunctionTool.from_defaults(fn=check_room_availability)
+menu_tool = FunctionTool.from_defaults(fn=get_restaurant_menu)
 
 
-# =========================================================
-# ReAct LLM Agent
-# =========================================================
 agent = ReActAgent(
     tools=[availability_tool, menu_tool],
     llm=llm,
@@ -77,106 +69,84 @@ class BackgroundLoop:
 
     def __init__(self):
         self.loop = asyncio.new_event_loop()
-        threading.Thread(target=self._run_loop, daemon=True).start()
+        threading.Thread(target=self._run, daemon=True).start()
 
-    def _run_loop(self):
+    def _run(self):
         asyncio.set_event_loop(self.loop)
         self.loop.run_forever()
 
     @classmethod
-    def get_loop(cls):
+    def loop(cls):
         if not cls._instance:
             cls._instance = BackgroundLoop()
         return cls._instance.loop
 
 
 # =========================================================
-# Main Chat Agent Logic
+# Main React Agent
 # =========================================================
 class ReactAgent:
     def __init__(self):
         self.agent = agent
+        self.loop = BackgroundLoop.loop()
         self.memory = []
-        self.loop = BackgroundLoop.get_loop()
 
-    # ------------------------------
-    # Intent Matching Helpers
-    # ------------------------------
-    def _contains(self, text: str, keywords: list) -> bool:
-        text = text.lower()
-        words = text.split()
-        return any(
-            (kw in text) or fuzzy_match(w, keywords)
-            for w in words
-            for kw in keywords
-        )
+    # ------------------------------------------------------
+    # Detect Intent Dynamically (from INTENT_CONFIG)
+    # ------------------------------------------------------
+    def detect_intent(self, text: str) -> str:
+        for intent, config in INTENT_CONFIG.items():
+            keywords = config["keywords"]
 
-    def _is_greeting(self, text: str) -> bool:
-        return self._contains(text, GREETINGS)
+            if match_intent(text, keywords):
+                return intent
 
-    def _is_hotel(self, text: str) -> bool:
-        return self._contains(text, HOTEL_KEYWORDS)
+        return "general"
 
-    def _is_booking(self, text: str) -> bool:
-        return self._contains(text, BOOKING_KEYWORDS)
-
-    def _is_service(self, text: str) -> bool:
-        return self._contains(text, SERVICE_KEYWORDS)
-
-    # ------------------------------
-    # Main Response Logic
-    # ------------------------------
+    # ------------------------------------------------------
+    # Generate Response
+    # ------------------------------------------------------
     def generate_response(self, prompt: str) -> str:
 
-        # ----------------------------------------------------
-        # GREETING — generate real AI welcome response
-        # ----------------------------------------------------
-        if self._is_greeting(prompt):
+        intent = self.detect_intent(prompt)
+        intent_config = INTENT_CONFIG[intent]
 
-            welcome_prompt = get_custom_welcome_prompt(
-                "",        # missing_str
-                "",        # known_info_str
-                prompt,    # user_input
-                False      # followup
-            )
+        # --------------------------------------------------
+        # 1. Greeting Flow (goes to Gemini)
+        # --------------------------------------------------
+        if intent == "greeting":
+            welcome_prompt = get_custom_welcome_prompt("", "", prompt, False)
 
             async def _run():
                 return await self.agent.run(user_msg=welcome_prompt)
 
-            future = asyncio.run_coroutine_threadsafe(_run(), self.loop)
-            result = future.result(timeout=60)
+            fut = asyncio.run_coroutine_threadsafe(_run(), self.loop)
+            result = fut.result(timeout=60)
 
             return getattr(result.response, "content", str(result.response))
 
-        # ----------------------------------------------------
-        # NOT hotel related
-        # ----------------------------------------------------
-        if not self._is_hotel(prompt):
-            return "Please ask booking or service related questions."
+        # --------------------------------------------------
+        # 2. SERVICE FLOW — dynamic service loader
+        # --------------------------------------------------
+        service_path = intent_config["service"]
 
-        # ----------------------------------------------------
-        # Intent Classification
-        # ----------------------------------------------------
-        if self._is_booking(prompt):
-            intent = "booking"
-        elif self._is_service(prompt):
-            intent = "service"
-        else:
-            intent = "general"
+        if service_path:   # e.g. "services.booking_service"
+            module = importlib.import_module(service_path)
+            handler = module.ServiceHandler()
+            return handler.handle(prompt)
 
-        # ----------------------------------------------------
-        # Run LLM for HOTEL Query
-        # ----------------------------------------------------
+        # --------------------------------------------------
+        # 3. DEFAULT HOTEL QUERY (fallback to LLM)
+        # --------------------------------------------------
         async def _run():
-            structured_prompt = get_intent_prompt(intent, prompt)
-            return await self.agent.run(user_msg=structured_prompt)
+            structured = get_intent_prompt(intent, prompt)
+            return await self.agent.run(user_msg=structured)
 
         try:
-            future = asyncio.run_coroutine_threadsafe(_run(), self.loop)
-            result = future.result(timeout=60)
+            fut = asyncio.run_coroutine_threadsafe(_run(), self.loop)
+            result = fut.result(timeout=60)
 
             text = getattr(result.response, "content", str(result.response))
-
             self.memory.append({"user": prompt, "bot": text, "intent": intent})
             return text
 
