@@ -7,31 +7,31 @@ class DateValidator:
     @staticmethod
     def parse_date(text: str):
         """
-        Accepts ANY date format:
+        Accept ANY format:
         - 2025/05/12
         - 2025-05-12
         - 12/05/2025
-        - 12-05-25
         - tomorrow
         - next monday
-        - this friday
         - in 2 days
-        - 2025 / 05 / 12 (spaces)
         ALWAYS returns: YYYY-MM-DD
+        Ensures: DATE MUST BE FUTURE DATE (today onward)
         """
         text = text.strip().lower()
+
+        now = datetime.now()
 
         # -------------------------------
         # TODAY / TOMORROW
         # -------------------------------
         if "today" in text:
-            return datetime.now().strftime("%Y-%m-%d")
+            return now.strftime("%Y-%m-%d")
 
         if "tomorrow" in text:
-            return (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+            return (now + timedelta(days=1)).strftime("%Y-%m-%d")
 
         # -------------------------------
-        # WEEKDAYS (next monday, monday)
+        # WEEKDAY HANDLING
         # -------------------------------
         weekdays = {
             "monday": 0, "tuesday": 1, "wednesday": 2,
@@ -40,33 +40,93 @@ class DateValidator:
 
         for day, index in weekdays.items():
             if day in text:
-                today_index = datetime.now().weekday()
+                today_index = now.weekday()
                 offset = index - today_index
                 if offset <= 0:
                     offset += 7
-                return (datetime.now() + timedelta(days=offset)).strftime("%Y-%m-%d")
+                parsed_date = now + timedelta(days=offset)
+                return parsed_date.strftime("%Y-%m-%d")
 
         # -------------------------------
-        # GENERIC FORMATS (12/05/2025, etc.)
+        # GENERIC FORMATS
         # -------------------------------
-        # Try ISO / US / universal parsing
+        # Use verbose parser and return only valid future dates for compatibility
+        parsed, reason = DateValidator.parse_date_verbose(text)
+        if parsed and reason == "ok":
+            return parsed
+        return None
+
+    @staticmethod
+    def parse_date_verbose(text: str):
+        """
+        Parse text to a date string and return a tuple (date_str_or_None, reason).
+
+        Reasons:
+          - 'ok'   : parsed and is today or future
+          - 'past' : parsed but date is in the past
+          - 'none' : could not parse
+        """
+        text = text.strip().lower()
+
+        now = datetime.now()
+
+        # TODAY / TOMORROW
+        if "today" in text:
+            return now.strftime("%Y-%m-%d"), "ok"
+
+        if "tomorrow" in text:
+            return (now + timedelta(days=1)).strftime("%Y-%m-%d"), "ok"
+
+        # WEEKDAY HANDLING
+        weekdays = {
+            "monday": 0, "tuesday": 1, "wednesday": 2,
+            "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6
+        }
+
+        for day, index in weekdays.items():
+            if day in text:
+                today_index = now.weekday()
+                offset = index - today_index
+                if offset <= 0:
+                    offset += 7
+                parsed_date = now + timedelta(days=offset)
+                return parsed_date.strftime("%Y-%m-%d"), "ok"
+
+        # GENERIC FORMATS
         for day_first in [False, True]:
             try:
                 parsed = date_parser.parse(text, fuzzy=True, dayfirst=day_first)
-                return parsed.strftime("%Y-%m-%d")
+
+                # BLOCK PAST DATES
+                if parsed.date() < now.date():
+                    return parsed.strftime("%Y-%m-%d"), "past"
+
+                return parsed.strftime("%Y-%m-%d"), "ok"
+
             except:
                 pass
 
-        return None
+        return None, "none"
+
+    @staticmethod
+    def is_future(date_str: str):
+        """
+        Ensure date is today or future.
+        """
+        try:
+            d = datetime.strptime(date_str, "%Y-%m-%d")
+            return d.date() >= datetime.now().date()
+        except:
+            return False
 
     @staticmethod
     def is_checkout_valid(checkin: str, checkout: str):
         """
-        Ensures checkout > checkin.
+        checkout > checkin AND checkout must be future
         """
         try:
             ci = datetime.strptime(checkin, "%Y-%m-%d")
             co = datetime.strptime(checkout, "%Y-%m-%d")
-            return co > ci
+            return co > ci and co.date() >= datetime.now().date()
         except:
             return False

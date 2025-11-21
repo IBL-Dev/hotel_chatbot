@@ -23,7 +23,6 @@ class ServiceHandler(BaseService):
             if guests is None:
                 return "⚠️ Guest count missing."
 
-            # QUERY rooms where noOfPerson >= guests
             rooms = list(database.db["rooms"].find(
                 {"noOfPerson": {"$gte": guests}},
                 {"roomNo": 1, "noOfPerson": 1}
@@ -52,22 +51,33 @@ class ServiceHandler(BaseService):
         # 1) CHECK-IN DATE
         # =====================================
         if self.booking_state["checkin"] is None:
-            date = DateValidator.parse_date(text)
-            if date:
-                self.booking_state["checkin"] = date
+            parsed, reason = DateValidator.parse_date_verbose(text)
+            if reason == "past":
+                return "⚠️ The date you provided appears to be in the past. Please provide a future check-in date (today onward)."
+
+            if parsed:
+                # MUST BE FUTURE (parse_date_verbose already ensures reason=='ok')
+                self.booking_state["checkin"] = parsed
                 return "Great! When is your **check-out date**? 📅"
+
             return "Thank you for choosing our hotel! 😊\nWhen is your **check-in date**?"
 
         # =====================================
         # 2) CHECK-OUT DATE
         # =====================================
         if self.booking_state["checkout"] is None:
-            date = DateValidator.parse_date(text)
-            if date:
-                if not DateValidator.is_checkout_valid(self.booking_state["checkin"], date):
-                    return "⚠️ Check-out date must be **after** your check-in date. Please enter a valid one."
-                self.booking_state["checkout"] = date
+            parsed, reason = DateValidator.parse_date_verbose(text)
+            if reason == "past":
+                return "⚠️ The check-out date you entered is in the past. Please enter a future date after your check-in."
+
+            if parsed:
+                # Check-out must be after check-in AND future
+                if not DateValidator.is_checkout_valid(self.booking_state["checkin"], parsed):
+                    return "⚠️ Check-out date must be **after** check-in and also a future date. Please enter a valid one."
+
+                self.booking_state["checkout"] = parsed
                 return "How many **guests** will be staying? 👨‍👩‍👧"
+
             return "Please enter a valid **check-out date**."
 
         # =====================================
@@ -106,6 +116,7 @@ class ServiceHandler(BaseService):
     # NATURAL LANGUAGE GUEST EXTRACTION
     # ======================================================
     def extract_guests(self, text):
+        # Prevent dates from being detected as guest count
         date_patterns = [
             r"\b20\d{2}[-/]\d{1,2}[-/]\d{1,2}\b",
             r"\b20\d{2}[-/]\d{1,2}\b",
@@ -161,6 +172,21 @@ class ServiceHandler(BaseService):
     def summary(self):
         s = self.booking_state
         rooms_text = self.get_available_rooms()
+        # If no rooms are available, return a polite, actionable message
+        if rooms_text.strip().lower().startswith("❌ sorry, no rooms are available"):
+            guests = s.get('guests')
+            guest_part = f" for **{guests} guests**" if guests else ""
+            # include the user's requested booking details so they know what failed
+            return (
+                f"❌ Sorry — we can't book that day{guest_part}.\n\n"
+                "Your requested booking:\n"
+                f"- Check-in: {s.get('checkin')}\n"
+                f"- Check-out: {s.get('checkout')}\n"
+                f"- Guests: {s.get('guests')}\n"
+                f"- Room Type: {s.get('room_type')}\n"
+                f"- Room Condition: {s.get('room_condition')}\n\n"
+                "Would you like to try different dates or reduce the number of guests?"
+            )
 
         return (
             "✨ **Your Booking Summary**\n"

@@ -19,10 +19,10 @@ class Database:
             self.client = MongoClient(mongo_uri)
             self.db = self.client.get_database()
 
-            print("✅ MongoDB Connection Successful")
+            print(" MongoDB Connection Successful")
 
         except Exception as e:
-            print("❌ MongoDB Connection Failed!")
+            print(" MongoDB Connection Failed!")
             print(f"Error: {e}")
             raise e
 
