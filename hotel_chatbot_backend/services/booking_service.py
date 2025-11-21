@@ -1,5 +1,6 @@
 from services.base_service import BaseService
 from utils.date_validator import DateValidator
+from config.database import database
 import re
 
 class ServiceHandler(BaseService):
@@ -11,6 +12,34 @@ class ServiceHandler(BaseService):
         "room_type": None,
         "room_condition": None,
     }
+
+    # ======================================================
+    # FETCH AVAILABLE ROOMS BASED ON GUEST COUNT
+    # ======================================================
+    def get_available_rooms(self):
+        try:
+            guests = self.booking_state["guests"]
+
+            if guests is None:
+                return "⚠️ Guest count missing."
+
+            # QUERY rooms where noOfPerson >= guests
+            rooms = list(database.db["rooms"].find(
+                {"noOfPerson": {"$gte": guests}},
+                {"roomNo": 1, "noOfPerson": 1}
+            ))
+
+            if not rooms:
+                return f"❌ Sorry, no rooms are available for **{guests} guests**."
+
+            result = f"📌 **Available Rooms for {guests} Guest(s):**\n"
+            for idx, room in enumerate(rooms, start=1):
+                result += f"{idx}) Room {room.get('roomNo')} (Capacity: {room.get('noOfPerson')})\n"
+
+            return result
+
+        except Exception as e:
+            return f"⚠️ Error fetching rooms: {e}"
 
     # ======================================================
     # MAIN HANDLER
@@ -39,17 +68,17 @@ class ServiceHandler(BaseService):
                     return "⚠️ Check-out date must be **after** your check-in date. Please enter a valid one."
                 self.booking_state["checkout"] = date
                 return "How many **guests** will be staying? 👨‍👩‍👧"
-            return "Please enter a valid **check-out date** (e.g., 2025-05-12)."
+            return "Please enter a valid **check-out date**."
 
         # =====================================
-        # 3) NUMBER OF GUESTS (NATURAL LANGUAGE)
+        # 3) NUMBER OF GUESTS
         # =====================================
         if self.booking_state["guests"] is None:
             guests = self.extract_guests(text)
             if guests:
                 self.booking_state["guests"] = guests
                 return "What type of **room** do you prefer? (Single / Double / Family) 🛏️"
-            return "❌ Please enter a valid **number of guests**.\nExamples: 1, 2, 3 or 'three', 'four'."
+            return "❌ Please enter a valid **number of guests**."
 
         # =====================================
         # 4) ROOM TYPE
@@ -59,7 +88,7 @@ class ServiceHandler(BaseService):
             if room_type:
                 self.booking_state["room_type"] = room_type
                 return "Would you like an **AC or Non-AC** room? ❄️🔥"
-            return "Please choose a valid room type:\n👉 Single\n👉 Double\n👉 Family"
+            return "Please choose a valid room type (Single, Double, Family)."
 
         # =====================================
         # 5) ROOM CONDITION
@@ -74,70 +103,40 @@ class ServiceHandler(BaseService):
         return self.summary()
 
     # ======================================================
-    # NATURAL-LANGUAGE GUEST EXTRACTOR
+    # NATURAL LANGUAGE GUEST EXTRACTION
     # ======================================================
     def extract_guests(self, text):
-        """
-        Extracts guests from:
-        - "3 guests"
-        - "we are 4 people"
-        - "only two"
-        - "three"
-        - "need room for five"
-        Rejects:
-        - dates (2025/02/12)
-        - 2.5
-        - negative or zero
-        """
-
-        # ----------------------------------
-        # 1) BLOCK DATE-LIKE INPUTS
-        # ----------------------------------
         date_patterns = [
-            r"\b20\d{2}[-/]\d{1,2}[-/]\d{1,2}\b",  # 2025/02/12
-            r"\b20\d{2}[-/]\d{1,2}\b",             # 2025/02
-            r"\b\d{1,2}[-/]\d{1,2}[-/]\d{4}\b",    # 02/12/2025
+            r"\b20\d{2}[-/]\d{1,2}[-/]\d{1,2}\b",
+            r"\b20\d{2}[-/]\d{1,2}\b",
+            r"\b\d{1,2}[-/]\d{1,2}[-/]\d{4}\b",
         ]
         for p in date_patterns:
             if re.search(p, text):
-                return None  # This is a date, NOT a guest count
+                return None
 
-        # ----------------------------------
-        # 2) PURE DIGIT INPUT (e.g., "3")
-        # ----------------------------------
         if text.isdigit():
             g = int(text)
             return g if g >= 1 else None
 
-        # ----------------------------------
-        # 3) NATURAL LANGUAGE WORD NUMBERS
-        # ----------------------------------
         number_words = {
             "one": 1, "two": 2, "three": 3, "four": 4,
             "five": 5, "six": 6, "seven": 7, "eight": 8,
             "nine": 9, "ten": 10,
         }
 
-        # exact word ("three")
         if text in number_words:
             return number_words[text]
 
-        # word inside sentence ("we are three people")
         for word, num in number_words.items():
             if word in text:
                 return num
 
-        # ----------------------------------
-        # 4) DIGIT INSIDE SENTENCE ("we have 2 people")
-        # ----------------------------------
         match = re.search(r"\b(\d+)\b", text)
         if match:
             g = int(match.group(1))
             return g if g >= 1 else None
 
-        # ----------------------------------
-        # INVALID CASE
-        # ----------------------------------
         return None
 
     # ======================================================
@@ -157,10 +156,12 @@ class ServiceHandler(BaseService):
         return None
 
     # ======================================================
-    # SUMMARY MESSAGE
+    # SUMMARY
     # ======================================================
     def summary(self):
         s = self.booking_state
+        rooms_text = self.get_available_rooms()
+
         return (
             "✨ **Your Booking Summary**\n"
             f"- Check-in: {s['checkin']}\n"
@@ -168,5 +169,6 @@ class ServiceHandler(BaseService):
             f"- Guests: {s['guests']}\n"
             f"- Room Type: {s['room_type']}\n"
             f"- Room Condition: {s['room_condition']}\n\n"
+            f"{rooms_text}\n\n"
             "Would you like me to **confirm the booking**? ✔️"
         )

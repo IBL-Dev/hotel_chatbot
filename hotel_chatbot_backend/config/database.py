@@ -1,5 +1,3 @@
-# hotel_chatbot_backend/config/database.py
-
 from pymongo import MongoClient
 from dotenv import load_dotenv
 import os
@@ -16,12 +14,18 @@ class Database:
     def connect(self):
         try:
             mongo_uri = os.getenv("MONGO_URI")
+
+            # Attempt connection
             self.client = MongoClient(mongo_uri)
-            self.db = self.client.get_database()  # Default DB from URI
-            print("Database connection successful")
+            self.db = self.client.get_database()
+
+            print("✅ MongoDB Connection Successful")
+
         except Exception as e:
-            print(" Database connection failed:", e)
+            print("❌ MongoDB Connection Failed!")
+            print(f"Error: {e}")
             raise e
 
-# Create a global instance
+
+# Global instance
 database = Database()
