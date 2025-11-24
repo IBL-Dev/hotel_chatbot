@@ -2,6 +2,7 @@ from services.base_service import BaseService
 from utils.date_validator import DateValidator
 from config.database import database
 import re
+from datetime import datetime, timedelta
 
 class ServiceHandler(BaseService):
 
@@ -13,9 +14,9 @@ class ServiceHandler(BaseService):
         "room_condition": None,
     }
 
-    # ======================================================
-    # FETCH AVAILABLE ROOMS BASED ON GUEST COUNT
-    # ======================================================
+    # ===============================
+    # FETCH AVAILABLE ROOMS
+    # ===============================
     def get_available_rooms(self):
         try:
             guests = self.booking_state["guests"]
@@ -40,83 +41,130 @@ class ServiceHandler(BaseService):
         except Exception as e:
             return f"⚠️ Error fetching rooms: {e}"
 
-    # ======================================================
-    # MAIN HANDLER
-    # ======================================================
+    # ===============================
+    # MAIN BOOKING HANDLER
+    # ===============================
     def handle(self, message: str):
 
-        text = message.lower().strip()
+        text = message.strip()
 
-        # =====================================
-        # 1) CHECK-IN DATE
-        # =====================================
+        # --------------------------------------
+        # 1. CHECK-IN DATE
+        # --------------------------------------
         if self.booking_state["checkin"] is None:
             parsed, reason = DateValidator.parse_date_verbose(text)
+
+            if reason == "none":
+                return (
+                    "Sure! 😊\n"
+                    "When would you like to **check-in**?\n"
+                    "(Please choose a date within the next 30 days.)"
+                )
+
             if reason == "past":
-                return "⚠️ The date you provided appears to be in the past. Please provide a future check-in date (today onward)."
+                return (
+                    "⚠️ The date you entered is in the past.\n"
+                    "Please choose a future date within the next 30 days."
+                )
+
+            if reason == "too_far":
+                return (
+                    f"⚠️ Sorry! We only accept bookings within the next 30 days.\n\n"
+                    f"The date you entered (**{text}**) is too far ahead.\n"
+                    "Please select an earlier date."
+                )
 
             if parsed:
-                # MUST BE FUTURE (parse_date_verbose already ensures reason=='ok')
                 self.booking_state["checkin"] = parsed
-                return "Great! When is your **check-out date**? 📅"
+                return "Perfect! When is your **check-out date**? 📅"
 
-            return "Thank you for choosing our hotel! 😊\nWhen is your **check-in date**?"
+            return (
+                "⚠️ I couldn't understand that date.\n"
+                "Please enter a valid check-in date within the next 30 days."
+            )
 
-        # =====================================
-        # 2) CHECK-OUT DATE
-        # =====================================
+        # --------------------------------------
+        # 2. CHECK-OUT DATE (MUST BE WITHIN 7 DAYS AFTER CHECK-IN)
+        # --------------------------------------
         if self.booking_state["checkout"] is None:
             parsed, reason = DateValidator.parse_date_verbose(text)
-            if reason == "past":
-                return "⚠️ The check-out date you entered is in the past. Please enter a future date after your check-in."
+            checkin_date = self.booking_state["checkin"]
+            ci = datetime.strptime(checkin_date, "%Y-%m-%d").date()
 
+            # INVALID FORMAT → NOT A DATE
+            if reason == "none":
+                return (
+                    "⚠️ I couldn't understand that check-out date.\n"
+                    "Please enter a date within **7 days after your check-in date**."
+                )
+
+            # USER ENTERED A VALID PARSED DATE
             if parsed:
-                # Check-out must be after check-in AND future
-                if not DateValidator.is_checkout_valid(self.booking_state["checkin"], parsed):
-                    return "⚠️ Check-out date must be **after** check-in and also a future date. Please enter a valid one."
+                co = datetime.strptime(parsed, "%Y-%m-%d").date()
 
+                # RULE 1: Must be after check-in
+                if co <= ci:
+                    return (
+                        f"⚠️ The check-out date you entered (**{text}**) is before your check-in date.\n"
+                        "Please enter a valid check-out date."
+                    )
+
+                # RULE 2: Must be within 7 days
+                max_allowed = ci + timedelta(days=7)
+
+                if co > max_allowed:
+                    return (
+                        f"⚠️ The check-out date you entered (**{text}**) is too far.\n"
+                        "You can stay **up to 7 days** from your check-in date.\n\n"
+                        f"Valid check-out range: **{ci} to {max_allowed}**.\n"
+                        "Please enter a date within this range."
+                    )
+
+                # VALID CHECK-OUT DATE
                 self.booking_state["checkout"] = parsed
                 return "How many **guests** will be staying? 👨‍👩‍👧"
 
-            return "Please enter a valid **check-out date**."
+            # FALLBACK
+            return (
+                "⚠️ Please enter a valid check-out date within 7 days after check-in."
+            )
 
-        # =====================================
-        # 3) NUMBER OF GUESTS
-        # =====================================
+        # --------------------------------------
+        # 3. GUEST COUNT
+        # --------------------------------------
         if self.booking_state["guests"] is None:
             guests = self.extract_guests(text)
             if guests:
                 self.booking_state["guests"] = guests
-                return "What type of **room** do you prefer? (Single / Double / Family) 🛏️"
+                return "What type of **room** would you like? (Single / Double / Family) 🛏️"
             return "❌ Please enter a valid **number of guests**."
 
-        # =====================================
-        # 4) ROOM TYPE
-        # =====================================
+        # --------------------------------------
+        # 4. ROOM TYPE
+        # --------------------------------------
         if self.booking_state["room_type"] is None:
-            room_type = self.extract_room_type(text)
+            room_type = self.extract_room_type(text.lower())
             if room_type:
                 self.booking_state["room_type"] = room_type
                 return "Would you like an **AC or Non-AC** room? ❄️🔥"
-            return "Please choose a valid room type (Single, Double, Family)."
+            return "⚠️ Please choose a valid room type (Single, Double, Family)."
 
-        # =====================================
-        # 5) ROOM CONDITION
-        # =====================================
+        # --------------------------------------
+        # 5. ROOM CONDITION
+        # --------------------------------------
         if self.booking_state["room_condition"] is None:
-            cond = self.extract_room_condition(text)
+            cond = self.extract_room_condition(text.lower())
             if cond:
                 self.booking_state["room_condition"] = cond
                 return self.summary()
-            return "Do you prefer **AC or Non-AC** room? ❄️🔥"
+            return "Do you prefer **AC or Non-AC**? ❄️🔥"
 
         return self.summary()
 
-    # ======================================================
-    # NATURAL LANGUAGE GUEST EXTRACTION
-    # ======================================================
+    # ===============================
+    # HELPERS
+    # ===============================
     def extract_guests(self, text):
-        # Prevent dates from being detected as guest count
         date_patterns = [
             r"\b20\d{2}[-/]\d{1,2}[-/]\d{1,2}\b",
             r"\b20\d{2}[-/]\d{1,2}\b",
@@ -127,32 +175,23 @@ class ServiceHandler(BaseService):
                 return None
 
         if text.isdigit():
-            g = int(text)
-            return g if g >= 1 else None
+            return int(text) if int(text) >= 1 else None
 
-        number_words = {
+        words = {
             "one": 1, "two": 2, "three": 3, "four": 4,
             "five": 5, "six": 6, "seven": 7, "eight": 8,
-            "nine": 9, "ten": 10,
+            "nine": 9, "ten": 10
         }
 
-        if text in number_words:
-            return number_words[text]
-
-        for word, num in number_words.items():
-            if word in text:
-                return num
+        if text.lower() in words:
+            return words[text.lower()]
 
         match = re.search(r"\b(\d+)\b", text)
         if match:
-            g = int(match.group(1))
-            return g if g >= 1 else None
+            return int(match.group(1))
 
         return None
 
-    # ======================================================
-    # EXTRACTORS
-    # ======================================================
     def extract_room_type(self, text):
         if "single" in text: return "Single"
         if "double" in text: return "Double"
@@ -166,26 +205,22 @@ class ServiceHandler(BaseService):
             return "AC"
         return None
 
-    # ======================================================
+    # ===============================
     # SUMMARY
-    # ======================================================
+    # ===============================
     def summary(self):
         s = self.booking_state
         rooms_text = self.get_available_rooms()
-        # If no rooms are available, return a polite, actionable message
-        if rooms_text.strip().lower().startswith("❌ sorry, no rooms are available"):
-            guests = s.get('guests')
-            guest_part = f" for **{guests} guests**" if guests else ""
-            # include the user's requested booking details so they know what failed
+
+        if rooms_text.lower().startswith("❌"):
             return (
-                f"❌ Sorry — we can't book that day{guest_part}.\n\n"
-                "Your requested booking:\n"
-                f"- Check-in: {s.get('checkin')}\n"
-                f"- Check-out: {s.get('checkout')}\n"
-                f"- Guests: {s.get('guests')}\n"
-                f"- Room Type: {s.get('room_type')}\n"
-                f"- Room Condition: {s.get('room_condition')}\n\n"
-                "Would you like to try different dates or reduce the number of guests?"
+                "❌ Sorry — no rooms are available for your selected details.\n\n"
+                f"- Check-in: {s['checkin']}\n"
+                f"- Check-out: {s['checkout']}\n"
+                f"- Guests: {s['guests']}\n"
+                f"- Room Type: {s['room_type']}\n"
+                f"- Room Condition: {s['room_condition']}\n\n"
+                "Would you like to try **different dates**?"
             )
 
         return (
