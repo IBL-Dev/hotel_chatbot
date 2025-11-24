@@ -6,13 +6,17 @@ from datetime import datetime, timedelta
 
 class ServiceHandler(BaseService):
 
-    booking_state = {
-        "checkin": None,
-        "checkout": None,
-        "guests": None,
-        "room_type": None,
-        "room_condition": None,
-    }
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.booking_state = {
+            "checkin": None,
+            "checkout": None,
+            "guests": None,
+            "room_type": None,
+            "room_condition": None,
+        }
 
     # ===============================
     # FETCH AVAILABLE ROOMS
@@ -122,7 +126,7 @@ class ServiceHandler(BaseService):
 
                 # VALID CHECK-OUT DATE
                 self.booking_state["checkout"] = parsed
-                return "How many **guests** will be staying? 👨‍👩‍👧"
+                return "Would you like an **AC or Non-AC** room? ❄️🔥\n1. AC\n2. Non-AC"
 
             # FALLBACK
             return (
@@ -132,32 +136,35 @@ class ServiceHandler(BaseService):
         # --------------------------------------
         # 3. GUEST COUNT
         # --------------------------------------
-        if self.booking_state["guests"] is None:
-            guests = self.extract_guests(text)
-            if guests:
-                self.booking_state["guests"] = guests
-                return "What type of **room** would you like? (Single / Double / Family) 🛏️"
-            return "❌ Please enter a valid **number of guests**."
-
         # --------------------------------------
-        # 4. ROOM TYPE
-        # --------------------------------------
-        if self.booking_state["room_type"] is None:
-            room_type = self.extract_room_type(text.lower())
-            if room_type:
-                self.booking_state["room_type"] = room_type
-                return "Would you like an **AC or Non-AC** room? ❄️🔥"
-            return "⚠️ Please choose a valid room type (Single, Double, Family)."
-
-        # --------------------------------------
-        # 5. ROOM CONDITION
+        # 3. ROOM CONDITION (AC / Non-AC)
         # --------------------------------------
         if self.booking_state["room_condition"] is None:
             cond = self.extract_room_condition(text.lower())
             if cond:
                 self.booking_state["room_condition"] = cond
+                return "How many **guests** will be staying? 👨‍👩‍👧"
+            return "Do you prefer **AC or Non-AC**? ❄️🔥\n1. AC\n2. Non-AC"
+
+        # --------------------------------------
+        # 4. GUEST COUNT
+        # --------------------------------------
+        if self.booking_state["guests"] is None:
+            guests = self.extract_guests(text)
+            if guests:
+                self.booking_state["guests"] = guests
+                return "What type of **room** would you like? 🛏️\n1. Single\n2. Double\n3. Family"
+            return "❌ Please enter a valid **number of guests**."
+
+        # --------------------------------------
+        # 5. ROOM TYPE
+        # --------------------------------------
+        if self.booking_state["room_type"] is None:
+            room_type = self.extract_room_type(text.lower())
+            if room_type:
+                self.booking_state["room_type"] = room_type
                 return self.summary()
-            return "Do you prefer **AC or Non-AC**? ❄️🔥"
+            return "⚠️ Please choose a valid room type.\n1. Single\n2. Double\n3. Family"
 
         return self.summary()
 
@@ -193,12 +200,19 @@ class ServiceHandler(BaseService):
         return None
 
     def extract_room_type(self, text):
+        if "1" in text: return "Single"
+        if "2" in text: return "Double"
+        if "3" in text: return "Family"
+        
         if "single" in text: return "Single"
         if "double" in text: return "Double"
         if "family" in text: return "Family"
         return None
 
     def extract_room_condition(self, text):
+        if "1" in text: return "AC"
+        if "2" in text: return "Non-AC"
+        
         if "non ac" in text or "no ac" in text:
             return "Non-AC"
         if "ac" in text:
