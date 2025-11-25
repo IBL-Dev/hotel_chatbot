@@ -144,7 +144,7 @@ class ServiceHandler(BaseService):
             if cond:
                 self.booking_state["room_condition"] = cond
                 return "How many **guests** will be staying? 👨‍👩‍👧"
-            return "Do you prefer **AC or Non-AC**? ❄️🔥\n1. AC\n2. Non-AC"
+            return f"⚠️ Sorry, '**{text}**' is not a valid option.\nPlease select:\n1. AC\n2. Non-AC"
 
         # --------------------------------------
         # 4. GUEST COUNT
@@ -164,7 +164,7 @@ class ServiceHandler(BaseService):
             if room_type:
                 self.booking_state["room_type"] = room_type
                 return self.summary()
-            return "⚠️ Please choose a valid room type.\n1. Single\n2. Double\n3. Family"
+            return f"⚠️ Sorry, '**{text}**' is not a valid room type.\nPlease select:\n1. Single\n2. Double\n3. Family"
 
         return self.summary()
 
