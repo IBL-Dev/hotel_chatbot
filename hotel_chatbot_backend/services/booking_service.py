@@ -3,10 +3,12 @@ from utils.date_validator import DateValidator
 from config.database import database
 import re
 from datetime import datetime, timedelta
+from config.gemini_config import load_gemini
 
 class ServiceHandler(BaseService):
 
     def __init__(self):
+        self.llm = load_gemini()
         self.reset()
 
     def reset(self):
@@ -14,7 +16,6 @@ class ServiceHandler(BaseService):
             "checkin": None,
             "checkout": None,
             "guests": None,
-            "room_type": None,
             "room_condition": None,
         }
 
@@ -153,18 +154,8 @@ class ServiceHandler(BaseService):
             guests = self.extract_guests(text)
             if guests:
                 self.booking_state["guests"] = guests
-                return "What type of **room** would you like? 🛏️\n1. Single\n2. Double\n3. Family"
-            return "❌ Please enter a valid **number of guests**."
-
-        # --------------------------------------
-        # 5. ROOM TYPE
-        # --------------------------------------
-        if self.booking_state["room_type"] is None:
-            room_type = self.extract_room_type(text.lower())
-            if room_type:
-                self.booking_state["room_type"] = room_type
                 return self.summary()
-            return f"⚠️ Sorry, '**{text}**' is not a valid room type.\nPlease select:\n1. Single\n2. Double\n3. Family"
+            return "❌ Please enter a valid **number of guests**."
 
         return self.summary()
 
@@ -193,6 +184,34 @@ class ServiceHandler(BaseService):
         if text.lower() in words:
             return words[text.lower()]
 
+        # Check for complexity markers (indicating multiple people/groups)
+        complexity_markers = [" and ", " with ", " plus ", ",", " me", " i ", " my ", "myself"]
+        is_complex = any(marker in text.lower() for marker in complexity_markers)
+
+        if not is_complex:
+            match = re.search(r"\b(\d+)\b", text)
+            if match:
+                return int(match.group(1))
+
+        # Fallback to LLM for complex natural language
+        try:
+            prompt = (
+                f"Analyze this hotel booking request and extract the TOTAL number of guests: \"{text}\".\n"
+                "Rules:\n"
+                "1. Count explicitly mentioned people (e.g., 'my wife' = 1, '2 kids' = 2).\n"
+                "2. Do NOT count the speaker ('me', 'I') unless explicitly mentioned (e.g., 'me and my wife', 'I will come with...').\n"
+                "3. Example: 'my wife and 2 kids' -> Wife (1) + 2 kids = 3 guests (User excluded).\n"
+                "4. Example: 'me, my wife and 2 kids' -> User (1) + Wife (1) + 2 kids = 4 guests.\n"
+                "5. Return ONLY the integer number."
+            )
+            response = self.llm.complete(prompt)
+            extracted = response.text.strip()
+            if extracted.isdigit():
+                return int(extracted)
+        except Exception as e:
+            print(f"LLM extraction failed: {e}")
+
+        # Last resort: if LLM failed but there's a number, take it
         match = re.search(r"\b(\d+)\b", text)
         if match:
             return int(match.group(1))
@@ -200,13 +219,7 @@ class ServiceHandler(BaseService):
         return None
 
     def extract_room_type(self, text):
-        if "1" in text: return "Single"
-        if "2" in text: return "Double"
-        if "3" in text: return "Family"
-        
-        if "single" in text: return "Single"
-        if "double" in text: return "Double"
-        if "family" in text: return "Family"
+        # Deprecated/Removed
         return None
 
     def extract_room_condition(self, text):
@@ -232,7 +245,6 @@ class ServiceHandler(BaseService):
                 f"- Check-in: {s['checkin']}\n"
                 f"- Check-out: {s['checkout']}\n"
                 f"- Guests: {s['guests']}\n"
-                f"- Room Type: {s['room_type']}\n"
                 f"- Room Condition: {s['room_condition']}\n\n"
                 "Would you like to try **different dates**?"
             )
@@ -242,7 +254,6 @@ class ServiceHandler(BaseService):
             f"- Check-in: {s['checkin']}\n"
             f"- Check-out: {s['checkout']}\n"
             f"- Guests: {s['guests']}\n"
-            f"- Room Type: {s['room_type']}\n"
             f"- Room Condition: {s['room_condition']}\n\n"
             f"{rooms_text}\n\n"
             "Would you like me to **confirm the booking**? ✔️"
