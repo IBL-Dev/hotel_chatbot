@@ -231,7 +231,19 @@ class ServiceHandler(BaseService):
         # --------------------------------------
         if text == "1": # Confirm
             self.completed = True
-            return "🎉 **Booking Confirmed!**\nThank you for choosing our hotel. We look forward to hosting you! 😊"
+            
+            # Send Confirmation Email
+            from services.email_service import EmailService
+            recipient = "anjanatinush2001@gmail.com"
+            email_sent = EmailService.send_confirmation_email(recipient, self.booking_state)
+            
+            msg = "🎉 **Booking Confirmed!**\nThank you for choosing our hotel. We look forward to hosting you! 😊"
+            if email_sent:
+                msg += f"\n\n📧 A confirmation email has been sent to **{recipient}**."
+            else:
+                msg += "\n\n⚠️ (Note: Email sending failed. Please check server logs.)"
+                
+            return msg
         
         if text == "2": # Change Details
             self.booking_state["modification_mode"] = True
