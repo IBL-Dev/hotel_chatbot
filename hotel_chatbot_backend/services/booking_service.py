@@ -8,6 +8,7 @@ class ServiceHandler(BaseService):
 
     def __init__(self):
         self.reset()
+        self.completed = False
 
     def reset(self):
         self.booking_state = {
@@ -15,22 +16,25 @@ class ServiceHandler(BaseService):
             "checkout": None,
             "guests": None,
             "room_condition": None,
-            "available_rooms": [],  # Store fetched rooms
-            "selected_room": None,  # Store user's choice
+            "available_rooms": [],
+            "selected_room": None,
+            "modification_mode": False
         }
+        self.completed = False
+
+    def is_complete(self):
+        return self.completed
 
     # ===============================
     # FETCH AVAILABLE ROOMS
     # ===============================
     def get_available_rooms(self, guests, room_condition):
         try:
-            # Query: Capacity >= guests AND Room Type matches condition
             query = {
                 "noOfPerson": {"$gte": guests},
                 "roomType": room_condition
             }
             
-            # Projection: Include necessary fields
             projection = {
                 "roomNo": 1, 
                 "noOfPerson": 1, 
@@ -52,6 +56,51 @@ class ServiceHandler(BaseService):
     def handle(self, message: str):
 
         text = message.strip()
+
+        # --------------------------------------
+        # 0. MODIFICATION MODE
+        # --------------------------------------
+        if self.booking_state["modification_mode"]:
+            if text == "1": # Check-in
+                self.booking_state["checkin"] = None
+                self.booking_state["checkout"] = None
+                self.booking_state["selected_room"] = None
+                self.booking_state["modification_mode"] = False
+                return "Sure! When would you like to **check-in**? 📅"
+            
+            if text == "2": # Check-out
+                self.booking_state["checkout"] = None
+                self.booking_state["selected_room"] = None
+                self.booking_state["modification_mode"] = False
+                return "Okay! When is your new **check-out date**? 📅"
+            
+            if text == "3": # Room Condition
+                self.booking_state["room_condition"] = None
+                self.booking_state["available_rooms"] = []
+                self.booking_state["selected_room"] = None
+                self.booking_state["modification_mode"] = False
+                return "Would you like an **AC or Non-AC** room? ❄️🔥\n1. AC\n2. Non-AC"
+            
+            if text == "4": # Guests
+                self.booking_state["guests"] = None
+                self.booking_state["available_rooms"] = []
+                self.booking_state["selected_room"] = None
+                self.booking_state["modification_mode"] = False
+                return "How many **guests** will be staying? 👨‍👩‍👧"
+            
+            if text == "5": # Room Selection
+                self.booking_state["selected_room"] = None
+                self.booking_state["modification_mode"] = False
+                return self.format_room_list(self.booking_state["available_rooms"])
+
+            return (
+                "⚠️ Invalid option. Please select what you want to change:\n"
+                "1. Check-in Date\n"
+                "2. Check-out Date\n"
+                "3. Room Condition (AC/Non-AC)\n"
+                "4. Number of Guests\n"
+                "5. Selected Room"
+            )
 
         # --------------------------------------
         # 1. CHECK-IN DATE
@@ -89,32 +138,28 @@ class ServiceHandler(BaseService):
             )
 
         # --------------------------------------
-        # 2. CHECK-OUT DATE (MUST BE WITHIN 7 DAYS AFTER CHECK-IN)
+        # 2. CHECK-OUT DATE
         # --------------------------------------
         if self.booking_state["checkout"] is None:
             parsed, reason = DateValidator.parse_date_verbose(text)
             checkin_date = self.booking_state["checkin"]
             ci = datetime.strptime(checkin_date, "%Y-%m-%d").date()
 
-            # INVALID FORMAT → NOT A DATE
             if reason == "none":
                 return (
                     "⚠️ I couldn't understand that check-out date.\n"
                     "Please enter a date within **7 days after your check-in date**."
                 )
 
-            # USER ENTERED A VALID PARSED DATE
             if parsed:
                 co = datetime.strptime(parsed, "%Y-%m-%d").date()
 
-                # RULE 1: Must be after check-in
                 if co <= ci:
                     return (
                         f"⚠️ The check-out date you entered (**{text}**) is before your check-in date.\n"
                         "Please enter a valid check-out date."
                     )
 
-                # RULE 2: Must be within 7 days
                 max_allowed = ci + timedelta(days=7)
 
                 if co > max_allowed:
@@ -125,17 +170,13 @@ class ServiceHandler(BaseService):
                         "Please enter a date within this range."
                     )
 
-                # VALID CHECK-OUT DATE
                 self.booking_state["checkout"] = parsed
                 return "Would you like an **AC or Non-AC** room? ❄️🔥\n1. AC\n2. Non-AC"
 
-            # FALLBACK
-            return (
-                "⚠️ Please enter a valid check-out date within 7 days after check-in."
-            )
+            return "⚠️ Please enter a valid check-out date within 7 days after check-in."
 
         # --------------------------------------
-        # 3. ROOM CONDITION (AC / Non-AC)
+        # 3. ROOM CONDITION
         # --------------------------------------
         if self.booking_state["room_condition"] is None:
             cond = self.extract_room_condition(text.lower())
@@ -152,7 +193,6 @@ class ServiceHandler(BaseService):
             if guests:
                 self.booking_state["guests"] = guests
                 
-                # FETCH ROOMS NOW
                 rooms = self.get_available_rooms(guests, self.booking_state["room_condition"])
                 self.booking_state["available_rooms"] = rooms
                 
@@ -171,18 +211,37 @@ class ServiceHandler(BaseService):
         # 5. ROOM SELECTION
         # --------------------------------------
         if self.booking_state["selected_room"] is None:
-            # User input should be the index number (1, 2, 3...)
+            rooms = self.booking_state["available_rooms"]
+            count = len(rooms)
+
             if text.isdigit():
                 idx = int(text) - 1
-                rooms = self.booking_state["available_rooms"]
                 
-                if 0 <= idx < len(rooms):
+                if 0 <= idx < count:
                     self.booking_state["selected_room"] = rooms[idx]
                     return self.summary()
             
             return (
-                "⚠️ Please select a valid room number from the list above.\n"
-                "(e.g., type '1' to select the first room)"
+                f"⚠️ Invalid selection. Please choose a room number between **1 and {count}**.\n"
+                "(e.g., reply '1' for the first room)"
+            )
+
+        # --------------------------------------
+        # 6. CONFIRMATION
+        # --------------------------------------
+        if text == "1": # Confirm
+            self.completed = True
+            return "🎉 **Booking Confirmed!**\nThank you for choosing our hotel. We look forward to hosting you! 😊"
+        
+        if text == "2": # Change Details
+            self.booking_state["modification_mode"] = True
+            return (
+                "What would you like to change?\n"
+                "1. Check-in Date\n"
+                "2. Check-out Date\n"
+                "3. Room Condition (AC/Non-AC)\n"
+                "4. Number of Guests\n"
+                "5. Selected Room"
             )
 
         return self.summary()
@@ -235,7 +294,6 @@ class ServiceHandler(BaseService):
             msg += f"   - Capacity: {room.get('noOfPerson')} Guests\n"
             msg += f"   - Price: ${room.get('price', 'N/A')}\n"
             
-            # Add first image if available
             images = room.get('images', [])
             if images and isinstance(images, list) and len(images) > 0:
                 msg += f"   - Image: {images[0]}\n"
@@ -267,5 +325,7 @@ class ServiceHandler(BaseService):
             f"- Capacity: {room.get('noOfPerson')} Guests\n"
             f"- Price: ${room.get('price')}\n"
             "\n"
-            "Would you like me to **confirm the booking**? ✔️"
+            "**Please select an option:**\n"
+            "1. **Confirm Booking** ✅\n"
+            "2. **Change Details** ✏️"
         )
