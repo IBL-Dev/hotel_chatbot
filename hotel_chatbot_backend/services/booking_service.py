@@ -3,12 +3,10 @@ from utils.date_validator import DateValidator
 from config.database import database
 import re
 from datetime import datetime, timedelta
-from config.gemini_config import load_gemini
 
 class ServiceHandler(BaseService):
 
     def __init__(self):
-        self.llm = load_gemini()
         self.reset()
 
     def reset(self):
@@ -17,34 +15,36 @@ class ServiceHandler(BaseService):
             "checkout": None,
             "guests": None,
             "room_condition": None,
+            "available_rooms": [],  # Store fetched rooms
+            "selected_room": None,  # Store user's choice
         }
 
     # ===============================
     # FETCH AVAILABLE ROOMS
     # ===============================
-    def get_available_rooms(self):
+    def get_available_rooms(self, guests, room_condition):
         try:
-            guests = self.booking_state["guests"]
+            # Query: Capacity >= guests AND Room Type matches condition
+            query = {
+                "noOfPerson": {"$gte": guests},
+                "roomType": room_condition
+            }
+            
+            # Projection: Include necessary fields
+            projection = {
+                "roomNo": 1, 
+                "noOfPerson": 1, 
+                "price": 1, 
+                "images": 1, 
+                "roomType": 1
+            }
 
-            if guests is None:
-                return "⚠️ Guest count missing."
-
-            rooms = list(database.db["rooms"].find(
-                {"noOfPerson": {"$gte": guests}},
-                {"roomNo": 1, "noOfPerson": 1}
-            ))
-
-            if not rooms:
-                return f"❌ Sorry, no rooms are available for **{guests} guests**."
-
-            result = f"📌 **Available Rooms for {guests} Guest(s):**\n"
-            for idx, room in enumerate(rooms, start=1):
-                result += f"{idx}) Room {room.get('roomNo')} (Capacity: {room.get('noOfPerson')})\n"
-
-            return result
+            rooms = list(database.db["rooms"].find(query, projection))
+            return rooms
 
         except Exception as e:
-            return f"⚠️ Error fetching rooms: {e}"
+            print(f"Error fetching rooms: {e}")
+            return []
 
     # ===============================
     # MAIN BOOKING HANDLER
@@ -135,9 +135,6 @@ class ServiceHandler(BaseService):
             )
 
         # --------------------------------------
-        # 3. GUEST COUNT
-        # --------------------------------------
-        # --------------------------------------
         # 3. ROOM CONDITION (AC / Non-AC)
         # --------------------------------------
         if self.booking_state["room_condition"] is None:
@@ -154,8 +151,39 @@ class ServiceHandler(BaseService):
             guests = self.extract_guests(text)
             if guests:
                 self.booking_state["guests"] = guests
-                return self.summary()
+                
+                # FETCH ROOMS NOW
+                rooms = self.get_available_rooms(guests, self.booking_state["room_condition"])
+                self.booking_state["available_rooms"] = rooms
+                
+                if not rooms:
+                    return (
+                        f"❌ Sorry, no **{self.booking_state['room_condition']}** rooms are available "
+                        f"for **{guests} guests**.\n"
+                        "Would you like to try different options?"
+                    )
+
+                return self.format_room_list(rooms)
+
             return "❌ Please enter a valid **number of guests**."
+
+        # --------------------------------------
+        # 5. ROOM SELECTION
+        # --------------------------------------
+        if self.booking_state["selected_room"] is None:
+            # User input should be the index number (1, 2, 3...)
+            if text.isdigit():
+                idx = int(text) - 1
+                rooms = self.booking_state["available_rooms"]
+                
+                if 0 <= idx < len(rooms):
+                    self.booking_state["selected_room"] = rooms[idx]
+                    return self.summary()
+            
+            return (
+                "⚠️ Please select a valid room number from the list above.\n"
+                "(e.g., type '1' to select the first room)"
+            )
 
         return self.summary()
 
@@ -184,42 +212,10 @@ class ServiceHandler(BaseService):
         if text.lower() in words:
             return words[text.lower()]
 
-        # Check for complexity markers (indicating multiple people/groups)
-        complexity_markers = [" and ", " with ", " plus ", ",", " me", " i ", " my ", "myself"]
-        is_complex = any(marker in text.lower() for marker in complexity_markers)
-
-        if not is_complex:
-            match = re.search(r"\b(\d+)\b", text)
-            if match:
-                return int(match.group(1))
-
-        # Fallback to LLM for complex natural language
-        try:
-            prompt = (
-                f"Analyze this hotel booking request and extract the TOTAL number of guests: \"{text}\".\n"
-                "Rules:\n"
-                "1. Count explicitly mentioned people (e.g., 'my wife' = 1, '2 kids' = 2).\n"
-                "2. Do NOT count the speaker ('me', 'I') unless explicitly mentioned (e.g., 'me and my wife', 'I will come with...').\n"
-                "3. Example: 'my wife and 2 kids' -> Wife (1) + 2 kids = 3 guests (User excluded).\n"
-                "4. Example: 'me, my wife and 2 kids' -> User (1) + Wife (1) + 2 kids = 4 guests.\n"
-                "5. Return ONLY the integer number."
-            )
-            response = self.llm.complete(prompt)
-            extracted = response.text.strip()
-            if extracted.isdigit():
-                return int(extracted)
-        except Exception as e:
-            print(f"LLM extraction failed: {e}")
-
-        # Last resort: if LLM failed but there's a number, take it
         match = re.search(r"\b(\d+)\b", text)
         if match:
             return int(match.group(1))
 
-        return None
-
-    def extract_room_type(self, text):
-        # Deprecated/Removed
         return None
 
     def extract_room_condition(self, text):
@@ -232,29 +228,44 @@ class ServiceHandler(BaseService):
             return "AC"
         return None
 
+    def format_room_list(self, rooms):
+        msg = f"📌 **Available {self.booking_state['room_condition']} Rooms:**\n\n"
+        for i, room in enumerate(rooms, 1):
+            msg += f"**{i}. Room {room.get('roomNo')}**\n"
+            msg += f"   - Capacity: {room.get('noOfPerson')} Guests\n"
+            msg += f"   - Price: ${room.get('price', 'N/A')}\n"
+            
+            # Add first image if available
+            images = room.get('images', [])
+            if images and isinstance(images, list) and len(images) > 0:
+                msg += f"   - Image: {images[0]}\n"
+            
+            msg += "\n"
+        
+        msg += "👉 Please reply with the **Room Number** you want to book (e.g., 1)."
+        return msg
+
     # ===============================
     # SUMMARY
     # ===============================
     def summary(self):
         s = self.booking_state
-        rooms_text = self.get_available_rooms()
-
-        if rooms_text.lower().startswith("❌"):
-            return (
-                "❌ Sorry — no rooms are available for your selected details.\n\n"
-                f"- Check-in: {s['checkin']}\n"
-                f"- Check-out: {s['checkout']}\n"
-                f"- Guests: {s['guests']}\n"
-                f"- Room Condition: {s['room_condition']}\n\n"
-                "Would you like to try **different dates**?"
-            )
+        room = s['selected_room']
+        
+        if not room:
+            return "⚠️ Error: No room selected."
 
         return (
             "✨ **Your Booking Summary**\n"
             f"- Check-in: {s['checkin']}\n"
             f"- Check-out: {s['checkout']}\n"
             f"- Guests: {s['guests']}\n"
-            f"- Room Condition: {s['room_condition']}\n\n"
-            f"{rooms_text}\n\n"
+            f"- Room Condition: {s['room_condition']}\n"
+            "----------------------------------\n"
+            f"🏠 **Selected Room: {room.get('roomNo')}**\n"
+            f"- Type: {room.get('roomType')}\n"
+            f"- Capacity: {room.get('noOfPerson')} Guests\n"
+            f"- Price: ${room.get('price')}\n"
+            "\n"
             "Would you like me to **confirm the booking**? ✔️"
         )
