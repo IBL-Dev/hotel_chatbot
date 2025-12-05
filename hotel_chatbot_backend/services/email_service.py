@@ -218,7 +218,7 @@ class EmailService:
                     <!-- Price Highlight -->
                     <div class="price-highlight">
                         <div class="label">Total Amount</div>
-                        <div class="amount">${booking_details.get('selected_room', {}).get('price', 'N/A')}</div>
+                        <div class="amount">LKR {booking_details.get('selected_room', {}).get('price', 'N/A')}</div>
                     </div>
 
                     <div class="divider"></div>
