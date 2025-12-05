@@ -5,22 +5,38 @@ import re
 from datetime import datetime, timedelta
 
 class ServiceHandler(BaseService):
+    
+    # Constants for State Keys
+    KEY_CHECKIN = "checkin"
+    KEY_CHECKOUT = "checkout"
+    KEY_GUESTS = "guests"
+    KEY_ROOM_CONDITION = "room_condition"
+    KEY_AVAILABLE_ROOMS = "available_rooms"
+    KEY_SELECTED_ROOM = "selected_room"
+    KEY_MODIFICATION_MODE = "modification_mode"
+    KEY_MODIFYING_FIELD = "modifying_field"
+    KEY_WAITING_OVERFLOW = "waiting_for_guest_overflow_choice"
+
+    # Constants for User Choices
+    CHOICE_AC = "AC"
+    CHOICE_NON_AC = "Non-AC"
 
     def __init__(self):
         self.reset()
         self.completed = False
 
     def reset(self):
+        """Resets the booking state to initial values."""
         self.booking_state = {
-            "checkin": None,
-            "checkout": None,
-            "guests": None,
-            "room_condition": None,
-            "available_rooms": [],
-            "selected_room": None,
-            "modification_mode": False,
-            "modifying_field": None,  # Track which field is being modified
-            "waiting_for_guest_overflow_choice": False # Track if waiting for user choice after overflow
+            self.KEY_CHECKIN: None,
+            self.KEY_CHECKOUT: None,
+            self.KEY_GUESTS: None,
+            self.KEY_ROOM_CONDITION: None,
+            self.KEY_AVAILABLE_ROOMS: [],
+            self.KEY_SELECTED_ROOM: None,
+            self.KEY_MODIFICATION_MODE: False,
+            self.KEY_MODIFYING_FIELD: None,
+            self.KEY_WAITING_OVERFLOW: False
         }
         self.completed = False
 
@@ -56,271 +72,284 @@ class ServiceHandler(BaseService):
     # MAIN BOOKING HANDLER
     # ===============================
     def handle(self, message: str):
-
+        """
+        Main handler that delegates to specific sub-handlers based on the current state.
+        """
         text = message.strip()
 
-        # --------------------------------------
-        # -1. GUEST OVERFLOW HANDLING
-        # --------------------------------------
-        if self.booking_state.get("waiting_for_guest_overflow_choice"):
-            if text == "1":
-                self.booking_state["guests"] = None
-                self.booking_state["waiting_for_guest_overflow_choice"] = False
-                return "Please enter the number of guests: 👨‍👩‍👧"
-            elif text == "2":
-                self.reset()
-                return "Thank you for visiting! We hope to see you again soon. 👋"
-            else:
+        # 1. Handle Guest Overflow Choice
+        if self.booking_state.get(self.KEY_WAITING_OVERFLOW):
+            return self._handle_guest_overflow(text)
+
+        # 2. Handle Modification Mode Selection
+        if self.booking_state[self.KEY_MODIFICATION_MODE]:
+            return self._handle_modification_mode(text)
+
+        # 3. Handle Check-in Date
+        if self.booking_state[self.KEY_CHECKIN] is None:
+            return self._handle_checkin(text)
+
+        # 4. Handle Check-out Date
+        if self.booking_state[self.KEY_CHECKOUT] is None:
+            return self._handle_checkout(text)
+
+        # 5. Handle Room Condition
+        if self.booking_state[self.KEY_ROOM_CONDITION] is None:
+            return self._handle_room_condition(text)
+
+        # 6. Handle Guest Count
+        if self.booking_state[self.KEY_GUESTS] is None:
+            return self._handle_guest_count(text)
+
+        # 7. Handle Room Selection
+        if self.booking_state[self.KEY_SELECTED_ROOM] is None:
+            return self._handle_room_selection(text)
+
+        # 8. Handle Confirmation
+        return self._handle_confirmation(text)
+
+    # ===============================
+    # SUB-HANDLERS
+    # ===============================
+    def _handle_guest_overflow(self, text: str):
+        if text == "1":
+            self.booking_state[self.KEY_GUESTS] = None
+            self.booking_state[self.KEY_WAITING_OVERFLOW] = False
+            return "Please enter the number of guests: 👨‍👩‍👧"
+        elif text == "2":
+            self.reset()
+            return "Thank you for visiting! We hope to see you again soon. 👋"
+        else:
+            return (
+                "⚠️ Invalid option.\n"
+                "Please select:\n"
+                "1. Enter a different guest count 🔢\n"
+                "2. Close booking flow ❌"
+            )
+
+    def _handle_modification_mode(self, text: str):
+        options = {
+            "1": (self.KEY_CHECKIN, "Sure! When would you like to **check-in**? 📅"),
+            "2": (self.KEY_CHECKOUT, "Okay! When is your new **check-out date**? 📅"),
+            "3": (self.KEY_ROOM_CONDITION, "Would you like an **AC or Non-AC** room? ❄️🔥\n1. AC\n2. Non-AC"),
+            "4": (self.KEY_GUESTS, "How many **guests** will be staying? 👨‍👩‍👧"),
+            "5": (self.KEY_SELECTED_ROOM, None) # Special case for room selection
+        }
+
+        if text in options:
+            field, prompt = options[text]
+            
+            # Reset relevant fields
+            self.booking_state[self.KEY_MODIFICATION_MODE] = False
+            self.booking_state[self.KEY_MODIFYING_FIELD] = field
+            
+            # Specific resets based on field dependencies
+            if field == self.KEY_CHECKIN:
+                self.booking_state[self.KEY_CHECKIN] = None
+                self.booking_state[self.KEY_CHECKOUT] = None
+                self.booking_state[self.KEY_SELECTED_ROOM] = None
+            elif field == self.KEY_CHECKOUT:
+                self.booking_state[self.KEY_CHECKOUT] = None
+                self.booking_state[self.KEY_SELECTED_ROOM] = None
+            elif field == self.KEY_ROOM_CONDITION:
+                self.booking_state[self.KEY_ROOM_CONDITION] = None
+                self.booking_state[self.KEY_AVAILABLE_ROOMS] = []
+                self.booking_state[self.KEY_SELECTED_ROOM] = None
+            elif field == self.KEY_GUESTS:
+                self.booking_state[self.KEY_GUESTS] = None
+                self.booking_state[self.KEY_AVAILABLE_ROOMS] = []
+                self.booking_state[self.KEY_SELECTED_ROOM] = None
+            elif field == self.KEY_SELECTED_ROOM:
+                self.booking_state[self.KEY_SELECTED_ROOM] = None
+                return self.format_room_list(self.booking_state[self.KEY_AVAILABLE_ROOMS])
+
+            return prompt
+
+        return (
+            "⚠️ Invalid option. Please select what you want to change:\n"
+            "1. Check-in Date\n"
+            "2. Check-out Date\n"
+            "3. Room Condition (AC/Non-AC)\n"
+            "4. Number of Guests\n"
+            "5. Selected Room"
+        )
+
+    def _handle_checkin(self, text: str):
+        parsed, reason = DateValidator.parse_date_verbose(text)
+
+        if reason == "none":
+            return (
+                "Sure! 😊\n"
+                "When would you like to **check-in**?\n"
+                "(Please choose a date within the next 30 days.)"
+            )
+
+        if reason == "past":
+            return (
+                "⚠️ The date you entered is in the past.\n"
+                "Please choose a future date within the next 30 days."
+            )
+
+        if reason == "too_far":
+            return (
+                f"⚠️ Sorry! We only accept bookings within the next 30 days.\n\n"
+                f"The date you entered (**{text}**) is too far ahead.\n"
+                "Please select an earlier date."
+            )
+
+        if parsed:
+            self.booking_state[self.KEY_CHECKIN] = parsed
+            
+            # If modifying check-in, validate existing check-out
+            if self.booking_state[self.KEY_MODIFYING_FIELD] == self.KEY_CHECKIN:
+                checkout_date = self.booking_state.get(self.KEY_CHECKOUT)
+                
+                if checkout_date:
+                    ci = datetime.strptime(parsed, "%Y-%m-%d").date()
+                    co = datetime.strptime(checkout_date, "%Y-%m-%d").date()
+                    
+                    # If check-out is now invalid, reset it and ask for new date
+                    if co <= ci:
+                        self.booking_state[self.KEY_CHECKOUT] = None
+                        self.booking_state[self.KEY_MODIFYING_FIELD] = self.KEY_CHECKOUT
+                        return (
+                            f"✅ Check-in updated to **{parsed}**.\n\n"
+                            "⚠️ Your previous check-out date is now invalid.\n"
+                            "Please enter a new **check-out date**:"
+                        )
+                
+                self.booking_state[self.KEY_MODIFYING_FIELD] = None
+                return self.summary()
+            
+            return "Perfect! When is your **check-out date**? 📅"
+
+        return (
+            "⚠️ I couldn't understand that date.\n"
+            "Please enter a valid check-in date within the next 30 days."
+        )
+
+    def _handle_checkout(self, text: str):
+        parsed, reason = DateValidator.parse_date_verbose(text)
+        checkin_date = self.booking_state[self.KEY_CHECKIN]
+        ci = datetime.strptime(checkin_date, "%Y-%m-%d").date()
+
+        if reason == "none":
+            return (
+                "⚠️ I couldn't understand that check-out date.\n"
+                "Please enter a date within **7 days after your check-in date**."
+            )
+
+        if parsed:
+            co = datetime.strptime(parsed, "%Y-%m-%d").date()
+
+            if co <= ci:
                 return (
-                    "⚠️ Invalid option.\n"
-                    "Please select:\n"
+                    f"⚠️ The check-out date you entered (**{text}**) is before your check-in date.\n"
+                    "Please enter a valid check-out date."
+                )
+
+            max_allowed = ci + timedelta(days=7)
+
+            if co > max_allowed:
+                return (
+                    f"⚠️ The check-out date you entered (**{text}**) is too far.\n"
+                    "You can stay **up to 7 days** from your check-in date.\n\n"
+                    f"Valid check-out range: **{ci} to {max_allowed}**.\n"
+                    "Please enter a date within this range."
+                )
+
+            self.booking_state[self.KEY_CHECKOUT] = parsed
+            
+            # If modifying check-out, return to summary
+            if self.booking_state[self.KEY_MODIFYING_FIELD] == self.KEY_CHECKOUT:
+                self.booking_state[self.KEY_MODIFYING_FIELD] = None
+                return self.summary()
+            return "Would you like an **AC or Non-AC** room? ❄️🔥\n1. AC\n2. Non-AC"
+
+        return "⚠️ Please enter a valid check-out date within 7 days after check-in."
+
+    def _handle_room_condition(self, text: str):
+        cond = self.extract_room_condition(text.lower())
+        if cond:
+            self.booking_state[self.KEY_ROOM_CONDITION] = cond
+            
+            # If modifying room condition, fetch rooms and return to summary
+            if self.booking_state[self.KEY_MODIFYING_FIELD] == self.KEY_ROOM_CONDITION:
+                guests = self.booking_state[self.KEY_GUESTS]
+                rooms = self.get_available_rooms(guests, cond)
+                self.booking_state[self.KEY_AVAILABLE_ROOMS] = rooms
+                
+                if not rooms:
+                    return (
+                        f"❌ Sorry, no **{cond}** rooms are available "
+                        f"for **{guests} guests**.\n"
+                        "Would you like to try different options?"
+                    )
+                
+                # Auto-select first room if only one available, otherwise ask user to select
+                if len(rooms) == 1:
+                    self.booking_state[self.KEY_SELECTED_ROOM] = rooms[0]
+                    self.booking_state[self.KEY_MODIFYING_FIELD] = None
+                    return self.summary()
+                else:
+                    self.booking_state[self.KEY_MODIFYING_FIELD] = self.KEY_SELECTED_ROOM
+                    return self.format_room_list(rooms)
+            return "How many **guests** will be staying? 👨‍👩‍👧"
+        return f"⚠️ Sorry, '**{text}**' is not a valid option.\nPlease select:\n1. AC\n2. Non-AC"
+
+    def _handle_guest_count(self, text: str):
+        guests = self.extract_guests(text)
+        if guests:
+            self.booking_state[self.KEY_GUESTS] = guests
+            
+            rooms = self.get_available_rooms(guests, self.booking_state[self.KEY_ROOM_CONDITION])
+            self.booking_state[self.KEY_AVAILABLE_ROOMS] = rooms
+            
+            if not rooms:
+                self.booking_state[self.KEY_WAITING_OVERFLOW] = True
+                return (
+                    f"❌ Sorry, no **{self.booking_state[self.KEY_ROOM_CONDITION]}** rooms are available "
+                    f"for **{guests} guests**.\n\n"
+                    "Please select an option:\n"
                     "1. Enter a different guest count 🔢\n"
                     "2. Close booking flow ❌"
                 )
-
-        # --------------------------------------
-        # 0. MODIFICATION MODE
-        # --------------------------------------
-        if self.booking_state["modification_mode"]:
-            if text == "1": # Check-in
-                self.booking_state["checkin"] = None
-                self.booking_state["checkout"] = None
-                self.booking_state["selected_room"] = None
-                self.booking_state["modification_mode"] = False
-                self.booking_state["modifying_field"] = "checkin"
-                return "Sure! When would you like to **check-in**? 📅"
             
-            if text == "2": # Check-out
-                self.booking_state["checkout"] = None
-                self.booking_state["selected_room"] = None
-                self.booking_state["modification_mode"] = False
-                self.booking_state["modifying_field"] = "checkout"
-                return "Okay! When is your new **check-out date**? 📅"
-            
-            if text == "3": # Room Condition
-                self.booking_state["room_condition"] = None
-                self.booking_state["available_rooms"] = []
-                self.booking_state["selected_room"] = None
-                self.booking_state["modification_mode"] = False
-                self.booking_state["modifying_field"] = "room_condition"
-                return "Would you like an **AC or Non-AC** room? ❄️🔥\n1. AC\n2. Non-AC"
-            
-            if text == "4": # Guests
-                self.booking_state["guests"] = None
-                self.booking_state["available_rooms"] = []
-                self.booking_state["selected_room"] = None
-                self.booking_state["modification_mode"] = False
-                self.booking_state["modifying_field"] = "guests"
-                return "How many **guests** will be staying? 👨‍👩‍👧"
-            
-            if text == "5": # Room Selection
-                self.booking_state["selected_room"] = None
-                self.booking_state["modification_mode"] = False
-                self.booking_state["modifying_field"] = "room_selection"
-                return self.format_room_list(self.booking_state["available_rooms"])
-
-            return (
-                "⚠️ Invalid option. Please select what you want to change:\n"
-                "1. Check-in Date\n"
-                "2. Check-out Date\n"
-                "3. Room Condition (AC/Non-AC)\n"
-                "4. Number of Guests\n"
-                "5. Selected Room"
-            )
-
-        # --------------------------------------
-        # 1. CHECK-IN DATE
-        # --------------------------------------
-        if self.booking_state["checkin"] is None:
-            parsed, reason = DateValidator.parse_date_verbose(text)
-
-            if reason == "none":
-                return (
-                    "Sure! 😊\n"
-                    "When would you like to **check-in**?\n"
-                    "(Please choose a date within the next 30 days.)"
-                )
-
-            if reason == "past":
-                return (
-                    "⚠️ The date you entered is in the past.\n"
-                    "Please choose a future date within the next 30 days."
-                )
-
-            if reason == "too_far":
-                return (
-                    f"⚠️ Sorry! We only accept bookings within the next 30 days.\n\n"
-                    f"The date you entered (**{text}**) is too far ahead.\n"
-                    "Please select an earlier date."
-                )
-
-            if parsed:
-                self.booking_state["checkin"] = parsed
-                
-                # If modifying check-in, validate existing check-out
-                if self.booking_state["modifying_field"] == "checkin":
-                    checkout_date = self.booking_state.get("checkout")
-                    
-                    if checkout_date:
-                        ci = datetime.strptime(parsed, "%Y-%m-%d").date()
-                        co = datetime.strptime(checkout_date, "%Y-%m-%d").date()
-                        
-                        # If check-out is now invalid, reset it and ask for new date
-                        if co <= ci:
-                            self.booking_state["checkout"] = None
-                            self.booking_state["modifying_field"] = "checkout"
-                            return (
-                                f"✅ Check-in updated to **{parsed}**.\n\n"
-                                "⚠️ Your previous check-out date is now invalid.\n"
-                                "Please enter a new **check-out date**:"
-                            )
-                    
-                    self.booking_state["modifying_field"] = None
+            # If modifying guests, handle room selection
+            if self.booking_state[self.KEY_MODIFYING_FIELD] == self.KEY_GUESTS:
+                if len(rooms) == 1:
+                    self.booking_state[self.KEY_SELECTED_ROOM] = rooms[0]
+                    self.booking_state[self.KEY_MODIFYING_FIELD] = None
                     return self.summary()
-                
-                return "Perfect! When is your **check-out date**? 📅"
+                else:
+                    self.booking_state[self.KEY_MODIFYING_FIELD] = self.KEY_SELECTED_ROOM
+                    return self.format_room_list(rooms)
 
-            return (
-                "⚠️ I couldn't understand that date.\n"
-                "Please enter a valid check-in date within the next 30 days."
-            )
+            return self.format_room_list(rooms)
 
-        # --------------------------------------
-        # 2. CHECK-OUT DATE
-        # --------------------------------------
-        if self.booking_state["checkout"] is None:
-            parsed, reason = DateValidator.parse_date_verbose(text)
-            checkin_date = self.booking_state["checkin"]
-            ci = datetime.strptime(checkin_date, "%Y-%m-%d").date()
+        return "❌ Please enter a valid **number of guests**."
 
-            if reason == "none":
-                return (
-                    "⚠️ I couldn't understand that check-out date.\n"
-                    "Please enter a date within **7 days after your check-in date**."
-                )
+    def _handle_room_selection(self, text: str):
+        rooms = self.booking_state[self.KEY_AVAILABLE_ROOMS]
+        count = len(rooms)
 
-            if parsed:
-                co = datetime.strptime(parsed, "%Y-%m-%d").date()
-
-                if co <= ci:
-                    return (
-                        f"⚠️ The check-out date you entered (**{text}**) is before your check-in date.\n"
-                        "Please enter a valid check-out date."
-                    )
-
-                max_allowed = ci + timedelta(days=7)
-
-                if co > max_allowed:
-                    return (
-                        f"⚠️ The check-out date you entered (**{text}**) is too far.\n"
-                        "You can stay **up to 7 days** from your check-in date.\n\n"
-                        f"Valid check-out range: **{ci} to {max_allowed}**.\n"
-                        "Please enter a date within this range."
-                    )
-
-                self.booking_state["checkout"] = parsed
-                
-                # If modifying check-out, return to summary
-                if self.booking_state["modifying_field"] == "checkout":
-                    self.booking_state["modifying_field"] = None
-                    return self.summary()
-                return "Would you like an **AC or Non-AC** room? ❄️🔥\n1. AC\n2. Non-AC"
-
-            return "⚠️ Please enter a valid check-out date within 7 days after check-in."
-
-        # --------------------------------------
-        # 3. ROOM CONDITION
-        # --------------------------------------
-        if self.booking_state["room_condition"] is None:
-            cond = self.extract_room_condition(text.lower())
-            if cond:
-                self.booking_state["room_condition"] = cond
-                
-                # If modifying room condition, fetch rooms and return to summary
-                if self.booking_state["modifying_field"] == "room_condition":
-                    guests = self.booking_state["guests"]
-                    rooms = self.get_available_rooms(guests, cond)
-                    self.booking_state["available_rooms"] = rooms
-                    
-                    if not rooms:
-                        return (
-                            f"❌ Sorry, no **{cond}** rooms are available "
-                            f"for **{guests} guests**.\n"
-                            "Would you like to try different options?"
-                        )
-                    
-                    # Auto-select first room if only one available, otherwise ask user to select
-                    if len(rooms) == 1:
-                        self.booking_state["selected_room"] = rooms[0]
-                        self.booking_state["modifying_field"] = None
-                        return self.summary()
-                    else:
-                        self.booking_state["modifying_field"] = "room_selection"
-                        return self.format_room_list(rooms)
-                return "How many **guests** will be staying? 👨‍👩‍👧"
-            return f"⚠️ Sorry, '**{text}**' is not a valid option.\nPlease select:\n1. AC\n2. Non-AC"
-
-        # --------------------------------------
-        # 4. GUEST COUNT
-        # --------------------------------------
-        if self.booking_state["guests"] is None:
-            guests = self.extract_guests(text)
-            if guests:
-                self.booking_state["guests"] = guests
-                
-                rooms = self.get_available_rooms(guests, self.booking_state["room_condition"])
-                self.booking_state["available_rooms"] = rooms
-                
-                if not rooms:
-                    self.booking_state["waiting_for_guest_overflow_choice"] = True
-                    return (
-                        f"❌ Sorry, no **{self.booking_state['room_condition']}** rooms are available "
-                        f"for **{guests} guests**.\n\n"
-                        "Please select an option:\n"
-                        "1. Enter a different guest count 🔢\n"
-                        "2. Close booking flow ❌"
-                    )
-                
-                # If modifying guests, handle room selection
-                if self.booking_state["modifying_field"] == "guests":
-                    if len(rooms) == 1:
-                        self.booking_state["selected_room"] = rooms[0]
-                        self.booking_state["modifying_field"] = None
-                        return self.summary()
-                    else:
-                        self.booking_state["modifying_field"] = "room_selection"
-                        return self.format_room_list(rooms)
-
-                return self.format_room_list(rooms)
-
-            return "❌ Please enter a valid **number of guests**."
-
-        # --------------------------------------
-        # 5. ROOM SELECTION
-        # --------------------------------------
-        if self.booking_state["selected_room"] is None:
-            rooms = self.booking_state["available_rooms"]
-            count = len(rooms)
-
-            if text.isdigit():
-                idx = int(text) - 1
-                
-                if 0 <= idx < count:
-                    self.booking_state["selected_room"] = rooms[idx]
-                    
-                    # If modifying room selection, return to summary
-                    if self.booking_state["modifying_field"] == "room_selection":
-                        self.booking_state["modifying_field"] = None
-                    return self.summary()
+        if text.isdigit():
+            idx = int(text) - 1
             
-            return (
-                f"⚠️ Invalid selection. Please choose a room number between **1 and {count}**.\n"
-                "(e.g., reply '1' for the first room)"
-            )
+            if 0 <= idx < count:
+                self.booking_state[self.KEY_SELECTED_ROOM] = rooms[idx]
+                
+                # If modifying room selection, return to summary
+                if self.booking_state[self.KEY_MODIFYING_FIELD] == self.KEY_SELECTED_ROOM:
+                    self.booking_state[self.KEY_MODIFYING_FIELD] = None
+                return self.summary()
+        
+        return (
+            f"⚠️ Invalid selection. Please choose a room number between **1 and {count}**.\n"
+            "(e.g., reply '1' for the first room)"
+        )
 
-        # --------------------------------------
-        # 6. CONFIRMATION
-        # --------------------------------------
+    def _handle_confirmation(self, text: str):
         if text == "1": # Confirm
             self.completed = True
             
@@ -338,7 +367,7 @@ class ServiceHandler(BaseService):
             return msg
         
         if text == "2": # Change Details
-            self.booking_state["modification_mode"] = True
+            self.booking_state[self.KEY_MODIFICATION_MODE] = True
             return (
                 "What would you like to change?\n"
                 "1. Check-in Date\n"
@@ -382,17 +411,17 @@ class ServiceHandler(BaseService):
         return None
 
     def extract_room_condition(self, text):
-        if "1" in text: return "AC"
-        if "2" in text: return "Non-AC"
+        if "1" in text: return self.CHOICE_AC
+        if "2" in text: return self.CHOICE_NON_AC
         
         if "non ac" in text or "no ac" in text:
-            return "Non-AC"
+            return self.CHOICE_NON_AC
         if "ac" in text:
-            return "AC"
+            return self.CHOICE_AC
         return None
 
     def format_room_list(self, rooms):
-        msg = f"📌 **Available {self.booking_state['room_condition']} Rooms:**\n\n"
+        msg = f"📌 **Available {self.booking_state[self.KEY_ROOM_CONDITION]} Rooms:**\n\n"
         for i, room in enumerate(rooms, 1):
             msg += f"**{i}. Room {room.get('roomNo')}**\n"
             msg += f"   - Capacity: {room.get('noOfPerson')} Guests\n"
@@ -412,14 +441,14 @@ class ServiceHandler(BaseService):
     # ===============================
     def summary(self):
         s = self.booking_state
-        room = s['selected_room']
+        room = s[self.KEY_SELECTED_ROOM]
         
         if not room:
             return "⚠️ Error: No room selected."
 
         # Calculate number of nights
-        checkin_date = datetime.strptime(s['checkin'], "%Y-%m-%d").date()
-        checkout_date = datetime.strptime(s['checkout'], "%Y-%m-%d").date()
+        checkin_date = datetime.strptime(s[self.KEY_CHECKIN], "%Y-%m-%d").date()
+        checkout_date = datetime.strptime(s[self.KEY_CHECKOUT], "%Y-%m-%d").date()
         num_nights = (checkout_date - checkin_date).days
         
         # Calculate total bill
@@ -428,11 +457,11 @@ class ServiceHandler(BaseService):
 
         return (
             "✨ **Your Booking Summary**\n"
-            f"- Check-in: {s['checkin']}\n"
-            f"- Check-out: {s['checkout']}\n"
+            f"- Check-in: {s[self.KEY_CHECKIN]}\n"
+            f"- Check-out: {s[self.KEY_CHECKOUT]}\n"
             f"- Number of Nights: {num_nights}\n"
-            f"- Guests: {s['guests']}\n"
-            f"- Room Condition: {s['room_condition']}\n"
+            f"- Guests: {s[self.KEY_GUESTS]}\n"
+            f"- Room Condition: {s[self.KEY_ROOM_CONDITION]}\n"
             "----------------------------------\n"
             f"🏠 **Selected Room: {room.get('roomNo')}**\n"
             f"- Type: {room.get('roomType')}\n"
