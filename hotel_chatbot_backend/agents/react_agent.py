@@ -183,9 +183,13 @@ class ReactAgent:
                 self.conversation_history.append({"role": "assistant", "message": response})
                 return response
             except ImportError:
+                import traceback
+                traceback.print_exc()
                 self.reset_flow()
                 return f"Service '{service_path}' not found."
             except Exception as e:
+                import traceback
+                traceback.print_exc()
                 self.reset_flow()
                 return f"Error starting {intent} service: {e}"
 

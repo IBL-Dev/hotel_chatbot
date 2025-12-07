@@ -1,4 +1,5 @@
 from services.base_service import BaseService
+from services.auth_service import AuthService
 from utils.date_validator import DateValidator
 from config.database import database
 import re
@@ -22,6 +23,7 @@ class ServiceHandler(BaseService):
     CHOICE_NON_AC = "Non-AC"
 
     def __init__(self):
+        self.auth_service = AuthService() # Initialize Auth Service
         self.reset()
         self.completed = False
 
@@ -39,6 +41,8 @@ class ServiceHandler(BaseService):
             self.KEY_WAITING_OVERFLOW: False
         }
         self.completed = False
+        if hasattr(self, 'auth_service'):
+            self.auth_service.reset()
 
     def is_complete(self):
         return self.completed
@@ -76,6 +80,12 @@ class ServiceHandler(BaseService):
         Main handler that delegates to specific sub-handlers based on the current state.
         """
         text = message.strip()
+
+        # 0. Handle Authentication (NEW)
+        if not self.auth_service.is_authenticated():
+            if self.auth_service.state == AuthService.STATE_IDLE:
+                return self.auth_service.start_auth()
+            return self.auth_service.handle(text)
 
         # 1. Handle Guest Overflow Choice
         if self.booking_state.get(self.KEY_WAITING_OVERFLOW):
