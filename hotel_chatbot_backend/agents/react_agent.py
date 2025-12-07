@@ -1,5 +1,6 @@
 # react_agent.py
 
+import re
 import os
 import asyncio
 import threading
@@ -146,7 +147,25 @@ class ReactAgent:
             try:
                 fut = asyncio.run_coroutine_threadsafe(_run(), self.loop)
                 result = fut.result(timeout=60)
-                response = getattr(result.response, "content", str(result.response))
+                raw_response = getattr(result.response, "content", str(result.response))
+
+                # Parse structured response
+                # Handle **Message**: or Message: variations
+                message_match = re.search(r"\*?Message\*?:\s*(.+)", raw_response, re.IGNORECASE)
+                badge_match = re.search(r"\*?Badge\*?:\s*(.+)", raw_response, re.IGNORECASE)
+
+                if message_match:
+                    response_text = message_match.group(1).strip()
+                    if badge_match:
+                        badge_text = badge_match.group(1).strip()
+                        # Append badge info clearly
+                        response = f"{response_text}\n\n[Badge Suggestion: {badge_text}]"
+                    else:
+                        response = response_text
+                else:
+                    # Fallback to raw response if format is unexpected
+                    response = raw_response
+
                 self.conversation_history.append({"role": "assistant", "message": response})
                 return response
             except Exception as e:

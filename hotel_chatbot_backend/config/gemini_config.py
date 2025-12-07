@@ -7,9 +7,8 @@ def load_gemini():
         raise ValueError("GEMINI_API_KEY missing!")
 
     # Force correct name format
-    model_name = os.getenv("GEMINI_MODEL", "models/gemini-1.5-flash")
-
-    # Ensure model name starts with "models/"
+    # Use generic valid model alias
+    model_name = "models/gemini-flash-latest"
     if not model_name.startswith("models/"):
         model_name = f"models/{model_name}"
 
