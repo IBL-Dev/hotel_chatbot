@@ -11,9 +11,19 @@ class RegistrationPrompts:
     
     ASK_CONFIRM_PASSWORD = "Please **confirm your password**. 🔐"
     
-    WELCOME_BACK = "Welcome back, **{name}**! 👋\nLet's continue with your booking."
+    WELCOME_BACK = (
+        "Welcome back, **{name}**! 👋\n"
+        "Let's continue with your booking.\n\n"
+        "When would you like to **check-in**? 📅\n"
+        "(Please enter a date within the next 30 days.)"
+    )
     
-    REGISTRATION_SUCCESS = "🎉 **Registration Successful!**\nYou are now logged in as **{name}**.\n\nNow, let's get back to it. When would you like to **check-in**? 📅"
+    REGISTRATION_SUCCESS = (
+        "🎉 **Registration Successful!**\n"
+        "You are now logged in as **{name}**.\n\n"
+        "Now, let's get back to it. When would you like to **check-in**? 📅\n"
+        "(Please enter a date within the next 30 days.)"
+    )
 
     INVALID_EMAIL = "⚠️ that doesn't look like a valid email address. Please try again."
     

@@ -4,6 +4,7 @@ from utils.date_validator import DateValidator
 from config.database import database
 import re
 from datetime import datetime, timedelta
+from models.booking_model import BookingModel
 
 class ServiceHandler(BaseService):
     
@@ -363,6 +364,43 @@ class ServiceHandler(BaseService):
         if text == "1": # Confirm
             self.completed = True
             
+            # Save Booking to Database
+            try:
+                current_user = self.auth_service.current_user
+                user_id = str(current_user.get("_id")) if current_user else None
+                
+                # Retrieve selected room details
+                room = self.booking_state[self.KEY_SELECTED_ROOM]
+                
+                # Prepare dates
+                checkin_str = self.booking_state[self.KEY_CHECKIN]
+                checkout_str = self.booking_state[self.KEY_CHECKOUT]
+                checkin_date = datetime.strptime(checkin_str, "%Y-%m-%d")
+                checkout_date = datetime.strptime(checkout_str, "%Y-%m-%d")
+                
+                # Calculate total price
+                num_nights = (checkout_date.date() - checkin_date.date()).days
+                price_per_night = room.get('price', 0)
+                total_price = num_nights * price_per_night
+
+                booking_data = {
+                    "userId": user_id,
+                    "roomNo": room.get("roomNo"),
+                    "checkInDate": checkin_date,
+                    "checkOutDate": checkout_date,
+                    "noOfPerson": self.booking_state[self.KEY_GUESTS],
+                    "totalPrice": total_price,
+                    "status": "pending",
+                    "roomImg": room.get("images", [])
+                }
+                
+                booking_id = BookingModel.create_booking(booking_data)
+                print(f"Booking saved with ID: {booking_id}")
+                
+            except Exception as e:
+                print(f"Error saving booking: {e}")
+                # Optionally handle error (e.g., notify user), but we proceed to email for now
+
             # Send Confirmation Email
             from services.email_service import EmailService
             recipient = "anjanatinush2001@gmail.com"
