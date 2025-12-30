@@ -19,3 +19,25 @@ Response format:
 Message: <your response>
 Badge: <one icon concept (e.g., room-key icon, calendar icon)>
 """
+
+def get_guest_extraction_prompt(user_message: str):
+    """
+    LLM prompt to extract the total number of guests from natural language.
+    """
+    return f"""
+Extract the total number of guests mentioned in the following user message for a hotel booking.
+Consider "me", "I", "myself" as 1 guest, and then add any additional friends or persons mentioned.
+
+Examples:
+- "Just me" -> 1
+- "Me and my wife" -> 2
+- "Me and my two friends" -> 3
+- "Three people" -> 3
+- "Me and 4 others" -> 5
+- "five" -> 5
+- "2 adults and 1 child" -> 3
+
+User message: "{user_message}"
+
+Respond ONLY with the final integer number. If no number can be determined, respond with "None".
+Number:"""

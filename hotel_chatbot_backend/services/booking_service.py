@@ -5,6 +5,8 @@ from config.database import database
 import re
 from datetime import datetime, timedelta
 from models.booking_model import BookingModel
+from config.gemini_config import load_gemini
+from promt.booking_response_prompt import get_guest_extraction_prompt
 
 class ServiceHandler(BaseService):
     
@@ -25,6 +27,7 @@ class ServiceHandler(BaseService):
 
     def __init__(self):
         self.auth_service = AuthService() # Initialize Auth Service
+        self.llm = load_gemini() # Initialize LLM for extractions
         self.reset()
         self.completed = False
 
@@ -433,6 +436,10 @@ class ServiceHandler(BaseService):
     # HELPERS
     # ===============================
     def extract_guests(self, text):
+        """
+        Extracts guest count using simple logic first, then falls back to LLM for NL inputs.
+        """
+        # 1. Check for dates to avoid mis-extraction (existing logic)
         date_patterns = [
             r"\b20\d{2}[-/]\d{1,2}[-/]\d{1,2}\b",
             r"\b20\d{2}[-/]\d{1,2}\b",
@@ -442,9 +449,26 @@ class ServiceHandler(BaseService):
             if re.search(p, text):
                 return None
 
+        # 2. Simple Digit Check
         if text.isdigit():
-            return int(text) if int(text) >= 1 else None
+            val = int(text)
+            return val if val >= 1 else None
 
+        # 3. LLM Extraction for Natural Language (New)
+        try:
+            prompt = get_guest_extraction_prompt(text)
+            response = self.llm.complete(prompt)
+            result_text = str(response).strip()
+            
+            # Extract number from response (LLM might say "Number: 3" or just "3")
+            match = re.search(r"(\d+)", result_text)
+            if match:
+                val = int(match.group(1))
+                return val if val >= 1 else None
+        except Exception as e:
+            print(f"Error in LLM guest extraction: {e}")
+
+        # 4. Fallback to old manual logic if LLM fails
         words = {
             "one": 1, "two": 2, "three": 3, "four": 4,
             "five": 5, "six": 6, "seven": 7, "eight": 8,
