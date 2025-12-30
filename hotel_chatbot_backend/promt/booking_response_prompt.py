@@ -1,3 +1,5 @@
+from datetime import datetime
+
 def get_booking_response_prompt(user_message: str):
     """
     LLM prompt for friendly, hotel-style booking responses.
@@ -41,3 +43,24 @@ User message: "{user_message}"
 
 Respond ONLY with the final integer number. If no number can be determined, respond with "None".
 Number:"""
+
+def get_date_extraction_prompt(user_message: str):
+    """
+    LLM prompt to extract a specific date from natural language, identifying spelling mistakes.
+    """
+    return f"""
+Extract the hotel booking date from the following user message. 
+Ignore spelling mistakes and correctly identify the intended date.
+
+Current Date: {datetime.now().strftime("%Y-%m-%d")}
+
+Rules:
+1. If the user says "today", use the current date.
+2. If the user mentions a day of the week, choose the upcoming one.
+3. If they mention a month with a spelling mistake (e.g., "januery"), correct it.
+4. If no date is found, respond with "None".
+
+User message: "{user_message}"
+
+Respond ONLY with the date in YYYY-MM-DD format.
+Date:"""

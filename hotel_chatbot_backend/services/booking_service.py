@@ -6,7 +6,7 @@ import re
 from datetime import datetime, timedelta
 from models.booking_model import BookingModel
 from config.gemini_config import load_gemini
-from promt.booking_response_prompt import get_guest_extraction_prompt
+from promt.booking_response_prompt import get_guest_extraction_prompt, get_date_extraction_prompt
 
 class ServiceHandler(BaseService):
     
@@ -189,6 +189,17 @@ class ServiceHandler(BaseService):
         )
 
     def _handle_checkin(self, text: str):
+        # 1. Try LLM extraction first for flexible NL support (New)
+        try:
+            prompt = get_date_extraction_prompt(text)
+            response = self.llm.complete(prompt)
+            result_date = str(response).strip()
+            if result_date and result_date != "None" and re.match(r"\d{4}-\d{2}-\d{2}", result_date):
+                text = result_date # Override with LLM-extracted date
+        except Exception as e:
+            print(f"Error in LLM date extraction: {e}")
+
+        # 2. Proceed with validation logic
         parsed, reason = DateValidator.parse_date_verbose(text)
 
         if reason == "none":
@@ -243,6 +254,17 @@ class ServiceHandler(BaseService):
         )
 
     def _handle_checkout(self, text: str):
+        # 1. Try LLM extraction first (New)
+        try:
+            prompt = get_date_extraction_prompt(text)
+            response = self.llm.complete(prompt)
+            result_date = str(response).strip()
+            if result_date and result_date != "None" and re.match(r"\d{4}-\d{2}-\d{2}", result_date):
+                text = result_date
+        except Exception as e:
+            print(f"Error in LLM date extraction: {e}")
+
+        # 2. Proceed with validation
         parsed, reason = DateValidator.parse_date_verbose(text)
         checkin_date = self.booking_state[self.KEY_CHECKIN]
         ci = datetime.strptime(checkin_date, "%Y-%m-%d").date()
