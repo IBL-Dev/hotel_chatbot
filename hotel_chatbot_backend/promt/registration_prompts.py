@@ -25,7 +25,14 @@ class RegistrationPrompts:
         "(Please enter a date within the next 30 days.)"
     )
 
-    INVALID_EMAIL = "⚠️ that doesn't look like a valid email address. Please try again."
+    INVALID_EMAIL = "⚠️ That doesn't look like a valid email address. Please try again."
+    
+    EMAIL_NOT_FOUND_CHOICE = (
+        "I couldn't find an account with the email **{email}**. 🤔\n\n"
+        "How would you like to proceed?\n"
+        "1. **Re-enter email** (if there was a typo) ✏️\n"
+        "2. **Register as a new user** ✨"
+    )
     
     PASSWORD_MISMATCH = "⚠️ Passwords do not match. Please try confirming your password again."
     

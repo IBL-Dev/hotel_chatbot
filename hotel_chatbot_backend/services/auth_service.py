@@ -10,6 +10,7 @@ class AuthService(BaseService):
     # States
     STATE_IDLE = "IDLE"
     STATE_WAITING_EMAIL = "WAITING_EMAIL"
+    STATE_WAITING_EMAIL_CHOICE = "WAITING_EMAIL_CHOICE"
     STATE_WAITING_NAME = "WAITING_NAME"
     STATE_WAITING_PASSWORD = "WAITING_PASSWORD"
     STATE_WAITING_CONFIRM_PASSWORD = "WAITING_CONFIRM_PASSWORD"
@@ -37,6 +38,9 @@ class AuthService(BaseService):
         if self.state == self.STATE_WAITING_EMAIL:
             return self._handle_email(text)
 
+        if self.state == self.STATE_WAITING_EMAIL_CHOICE:
+            return self._handle_email_choice(text)
+
         if self.state == self.STATE_WAITING_NAME:
             return self._handle_name(text)
 
@@ -59,17 +63,28 @@ class AuthService(BaseService):
         user = self._get_user_by_email(email)
         
         if user:
-            # Login successful (You might want to add password check for login too, 
-            # but for this specific flow 'if email exist continue booking' was requested)
-            # Assuming implicit login for existing email based on prompt. 
-            # "if email exist continue booking folow"
+            # Login successful
             self.current_user = user
             self.state = self.STATE_AUTHENTICATED
             return RegistrationPrompts.WELCOME_BACK.format(name=user.get("name", "User"))
         else:
-            # Start Registration
+            # Email not found - Ask user what to do
+            self.state = self.STATE_WAITING_EMAIL_CHOICE
+            return RegistrationPrompts.EMAIL_NOT_FOUND_CHOICE.format(email=email)
+
+    def _handle_email_choice(self, choice):
+        if "1" in choice:
+            self.state = self.STATE_WAITING_EMAIL
+            return RegistrationPrompts.ASK_EMAIL
+        elif "2" in choice:
             self.state = self.STATE_WAITING_NAME
             return RegistrationPrompts.ASK_NAME
+        else:
+            return (
+                "⚠️ Invalid option. Please select:\n"
+                "1. Re-enter email ✏️\n"
+                "2. Register as a new user ✨"
+            )
 
     def _handle_name(self, name):
         self.user_data["name"] = name
