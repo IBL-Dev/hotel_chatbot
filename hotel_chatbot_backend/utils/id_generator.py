@@ -42,3 +42,7 @@ def generate_structured_id(prefix, db, collection_name, id_field_name='id'):
 def generate_booking_id(db):
     """Specific wrapper for generating booking IDs."""
     return generate_structured_id('bid', db, 'bookings', 'bookingId')
+
+def generate_user_id(db):
+    """Specific wrapper for generating user IDs."""
+    return generate_structured_id('uid', db, 'users', 'userId')

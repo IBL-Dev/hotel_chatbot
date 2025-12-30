@@ -194,8 +194,12 @@ class ServiceHandler(BaseService):
             prompt = get_date_extraction_prompt(text)
             response = self.llm.complete(prompt)
             result_date = str(response).strip()
-            if result_date and result_date != "None" and re.match(r"\d{4}-\d{2}-\d{2}", result_date):
-                text = result_date # Override with LLM-extracted date
+            
+            # More robust extraction: find the date anywhere in the LLM response
+            # Handles "Date: 2024-12-25" or similar variations
+            match = re.search(r"(\d{4}-\d{2}-\d{2})", result_date)
+            if match:
+                text = match.group(1) # Override with matched date
         except Exception as e:
             print(f"Error in LLM date extraction: {e}")
 
@@ -259,8 +263,11 @@ class ServiceHandler(BaseService):
             prompt = get_date_extraction_prompt(text)
             response = self.llm.complete(prompt)
             result_date = str(response).strip()
-            if result_date and result_date != "None" and re.match(r"\d{4}-\d{2}-\d{2}", result_date):
-                text = result_date
+            
+            # Robust extraction
+            match = re.search(r"(\d{4}-\d{2}-\d{2})", result_date)
+            if match:
+                text = match.group(1)
         except Exception as e:
             print(f"Error in LLM date extraction: {e}")
 
@@ -392,7 +399,7 @@ class ServiceHandler(BaseService):
             # Save Booking to Database
             try:
                 current_user = self.auth_service.current_user
-                user_id = str(current_user.get("_id")) if current_user else None
+                user_id = current_user.get("userId") if current_user else None
                 
                 # Retrieve selected room details
                 room = self.booking_state[self.KEY_SELECTED_ROOM]
@@ -459,50 +466,29 @@ class ServiceHandler(BaseService):
     # ===============================
     def extract_guests(self, text):
         """
-        Extracts guest count using simple logic first, then falls back to LLM for NL inputs.
+        Extracts guest count. Uses simple digit check for performance, 
+        otherwise falls back to LLM for natural language interpretation.
         """
-        # 1. Check for dates to avoid mis-extraction (existing logic)
-        date_patterns = [
-            r"\b20\d{2}[-/]\d{1,2}[-/]\d{1,2}\b",
-            r"\b20\d{2}[-/]\d{1,2}\b",
-            r"\b\d{1,2}[-/]\d{1,2}[-/]\d{4}\b",
-        ]
-        for p in date_patterns:
-            if re.search(p, text):
-                return None
+        # 1. Protect against date-like strings to avoid mis-extraction
+        date_patterns = [r"\d{4}[-/]\d{1,2}[-/]\d{1,2}", r"\d{1,2}[-/]\d{1,2}[-/]\d{4}"]
+        if any(re.search(p, text) for p in date_patterns):
+            return None
 
-        # 2. Simple Digit Check
+        # 2. Simple Digit Check (Fast path)
         if text.isdigit():
             val = int(text)
             return val if val >= 1 else None
 
-        # 3. LLM Extraction for Natural Language (New)
+        # 3. LLM Extraction (Robust path for NL)
         try:
             prompt = get_guest_extraction_prompt(text)
             response = self.llm.complete(prompt)
-            result_text = str(response).strip()
-            
-            # Extract number from response (LLM might say "Number: 3" or just "3")
-            match = re.search(r"(\d+)", result_text)
+            match = re.search(r"(\d+)", str(response))
             if match:
                 val = int(match.group(1))
                 return val if val >= 1 else None
         except Exception as e:
             print(f"Error in LLM guest extraction: {e}")
-
-        # 4. Fallback to old manual logic if LLM fails
-        words = {
-            "one": 1, "two": 2, "three": 3, "four": 4,
-            "five": 5, "six": 6, "seven": 7, "eight": 8,
-            "nine": 9, "ten": 10
-        }
-
-        if text.lower() in words:
-            return words[text.lower()]
-
-        match = re.search(r"\b(\d+)\b", text)
-        if match:
-            return int(match.group(1))
 
         return None
 
