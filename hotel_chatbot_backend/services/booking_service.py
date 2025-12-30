@@ -385,13 +385,15 @@ class ServiceHandler(BaseService):
 
                 booking_data = {
                     "userId": user_id,
+                    "room": room.get("_id"),
                     "roomNo": room.get("roomNo"),
                     "checkInDate": checkin_date,
                     "checkOutDate": checkout_date,
                     "noOfPerson": self.booking_state[self.KEY_GUESTS],
                     "totalPrice": total_price,
-                    "status": "pending",
-                    "roomImg": room.get("images", [])
+                    "pricePerNight": price_per_night,
+                    "roomType": room.get("roomType"),
+                    "status": "PENDING"
                 }
                 
                 booking_id = BookingModel.create_booking(booking_data)
