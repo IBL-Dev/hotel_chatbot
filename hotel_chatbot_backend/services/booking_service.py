@@ -89,7 +89,16 @@ class ServiceHandler(BaseService):
         if not self.auth_service.is_authenticated():
             if self.auth_service.state == AuthService.STATE_IDLE:
                 return self.auth_service.start_auth()
-            return self.auth_service.handle(text)
+            
+            auth_response = self.auth_service.handle(text)
+            
+            # If user just became authenticated, proceed to first booking step
+            if self.auth_service.is_authenticated():
+                # Get the first booking prompt (check-in)
+                booking_prompt = self._handle_checkin("") 
+                return f"{auth_response}\n\n{booking_prompt}"
+            
+            return auth_response
 
         # 1. Handle Guest Overflow Choice
         if self.booking_state.get(self.KEY_WAITING_OVERFLOW):
