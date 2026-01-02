@@ -2,6 +2,7 @@
 Flask==3.0.3
 Flask-Cors==4.0.1
 python-dotenv==1.0.1
+flask-bcrypt==1.0.1
 
 # --- HTTP requests (updated to match LlamaIndex dependency) ---
 requests>=2.31.0
